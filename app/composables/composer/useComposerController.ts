@@ -24,6 +24,7 @@ export function useComposerController() {
   const runtime = useGatewayThreadRuntimeStore();
   const threadView = useGatewayThreadViewStore();
   const { t } = useI18n();
+  const device = useDevice();
   const { models, loadingModels } = storeToRefs(gateway);
   const { selectedHostId, selectedProjectId, selectedThreadId } = storeToRefs(navigation);
   const {
@@ -147,16 +148,18 @@ export function useComposerController() {
     if (slashCommandsState.handleKeydown(event)) {
       return;
     }
-    // Desktop keyboard users expect Enter to submit. Preserve mobile's multiline editor so the
-    // software keyboard cannot accidentally send a half-written message; Shift+Enter is the
-    // explicit desktop newline shortcut.
+    // Desktop keyboard users expect Enter to submit, even when the desktop browser window is
+    // narrow enough to use the mobile-style layout. Use the device class instead of a viewport
+    // breakpoint so resizing a desktop window does not unexpectedly change the key contract.
+    // Preserve mobile's multiline editor so the software keyboard cannot accidentally send a
+    // half-written message; Shift+Enter is the explicit desktop newline shortcut.
     if (
       event.key === "Enter" &&
       !event.shiftKey &&
       !event.altKey &&
       !event.ctrlKey &&
       !event.metaKey &&
-      window.matchMedia("(min-width: 48rem)").matches &&
+      !device.isMobileOrTablet &&
       canSendTurn.value
     ) {
       event.preventDefault();
