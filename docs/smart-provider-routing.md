@@ -67,8 +67,10 @@ app-server's authority. The portable history helper and conformance tests reject
 unmatched function/custom-tool IDs for any future HTTP transport.
 
 An active turn cannot be switched because replaying it could duplicate `apply_patch`, shell, or
-other side effects. Wait for the turn to become idle and retry. New threads receive the current
-policy at `thread/start`; an image turn then selects the vision model at `turn/start`.
+other side effects. Wait for the turn to become idle and retry. DeepSeek-only threads start on
+DeepSeek; hybrid threads are materialized first on the stock OpenAI provider (thread creation is
+not inference) and switch to the current hybrid decision on their first turn. An image turn then
+selects the vision model at `turn/start`.
 
 ## Status and health
 
