@@ -13,7 +13,10 @@ The Settings > Provider routing panel exposes exactly these primary modes:
 - **OpenAI + DeepSeek off-peak** — DeepSeek is selected outside DeepSeek's UTC weekday peak
   windows; OpenAI is selected during peak windows while its allowance is available. A confirmed
   OpenAI allowance exhaustion switches hybrid mode to DeepSeek until the allowance is rechecked or
-  a trusted reset time is reached.
+  a trusted reset time is reached. If a remote host cannot use DeepSeek (for example, its
+  app-server has no DeepSeek key), hybrid mode may fall back to OpenAI only when the OpenAI
+  allowance is not exhausted. That failover is logged and never occurs in DeepSeek-only mode. Set
+  `CODEX_PROVIDER_HYBRID_OPENAI_FALLBACK=false` to make such a failure fail closed instead.
 - **DeepSeek only** — OpenAI is never selected. Text uses `deepseek-v4-pro`; image-bearing input
   uses `deepseek-v4-flash-vision-exp`.
 
