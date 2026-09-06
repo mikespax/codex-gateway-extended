@@ -139,12 +139,21 @@ export function useComposerController() {
 
     // The device module can be fixed to the server's desktop default when a proxy omits the
     // user-agent header. Recheck the browser value so a real mobile keyboard never inherits the
-    // desktop Enter-to-send contract. iPadOS may expose a desktop Mac UA, so include its touch
-    // signature without treating every touch-capable laptop as mobile.
+    // desktop Enter-to-send contract. Prefer explicit UA-CH/mobile and UA signals, then use the
+    // browser's coarse-pointer signal when a proxy has rewritten or omitted those values. iPadOS
+    // may expose a desktop Mac UA, so include its touch signature without treating every
+    // fine-pointer desktop browser as mobile.
+    const userAgentData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } })
+      .userAgentData;
+    if (userAgentData?.mobile === true) return true;
+
     const userAgent = navigator.userAgent;
+    if (/Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(userAgent)) return true;
+    if (navigator.maxTouchPoints > 1 && /Macintosh/i.test(userAgent)) return true;
     return (
-      /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(userAgent) ||
-      (navigator.maxTouchPoints > 1 && /Macintosh/i.test(userAgent))
+      navigator.maxTouchPoints > 0 &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(pointer: coarse)").matches
     );
   }
 
