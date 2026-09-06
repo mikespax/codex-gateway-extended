@@ -48,6 +48,9 @@ class ThreadBroker {
       ...params,
       historyMode: "paginated",
       approvalPolicy: GATEWAY_APPROVAL_POLICY,
+      // Raw Responses API usage is the most precise per-turn accounting signal. Legacy and
+      // migrated threads still use the cumulative token-usage fallback when this opt-in is absent.
+      experimentalRawEvents: true,
     });
     const started = this.openService.startedThreadResult(host, projectId, result);
     await this.registry.retainStartedThreadSubscription(host, started.threadId);

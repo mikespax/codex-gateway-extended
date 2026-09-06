@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { RealtimeServerMessage } from "../../types";
 import { threadTimelineItemTypes } from "../../thread-history/types";
+import { threadTurnUsageSummarySchema } from "../usage-accounting";
 import { gatewayThreadSchema, rpcEnvelopeSchema, threadGoalSchema } from "../app-server";
 import { realtimeClientMessageSchema } from "./client-message-schema";
 import {
@@ -157,6 +158,7 @@ const threadOpenResultFields = {
     .optional(),
   threadSettings: threadSettingsSchema.nullable().optional(),
   tokenUsage: tokenUsageSchema.nullable().optional(),
+  turnUsage: z.array(threadTurnUsageSummarySchema).optional(),
   projectId: positiveId.nullable().optional(),
   project: projectSchema.nullable().optional(),
   turnsPage: turnsPageStateSchema,

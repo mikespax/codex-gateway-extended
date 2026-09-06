@@ -3,6 +3,7 @@ import IntermediateStepsToggle from "@/components/thread/IntermediateStepsToggle
 import IntermediateWorkingStatus from "@/components/thread/IntermediateWorkingStatus.vue";
 import ThreadItemView from "@/components/thread/ThreadItemView.vue";
 import TurnDurationLabel from "@/components/thread/TurnDurationLabel.vue";
+import TurnUsageSummary from "@/components/thread/TurnUsageSummary.vue";
 import type { ThreadTimelineRow } from "@/components/thread/timeline-rows";
 
 const props = defineProps<{
@@ -42,6 +43,7 @@ const emit = defineEmits<{
     :thread-id="threadId"
     :user-message-variant="props.row.userMessageVariant"
     :turn-timing="props.row.turnTiming"
+    :turn-usage="props.row.turnUsage"
     :agent-actions-available="props.row.agentActionsAvailable"
     :sent-at="props.row.sentAt"
     :turn-is-active="props.row.turnIsActive"
@@ -51,5 +53,8 @@ const emit = defineEmits<{
     :started-at="props.row.startedAt"
     :latest-operation="props.row.latestOperation"
   />
-  <TurnDurationLabel v-else :timing="props.row" />
+  <div v-else class="flex items-center gap-3 py-1">
+    <TurnDurationLabel :timing="props.row" />
+    <TurnUsageSummary v-if="props.row.turnUsage" :usage="props.row.turnUsage" />
+  </div>
 </template>

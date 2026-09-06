@@ -212,6 +212,8 @@ pnpm test:e2e
 | ----------------------------- | ---------------- | ------------------------------------------------------------------------------------------------ |
 | `CODEX_GATEWAY_CONFIG_SECRET` | 生产环境必需     | 用于加密保存 host/project/thread 配置的稳定 secret。                                             |
 | `CODEX_GATEWAY_DB_PATH`       | 否               | SQLite 数据库路径。Docker 默认使用 `/data/codex-gateway.db`。                                    |
+| `CODEX_GATEWAY_SUBSCRIPTION_PRICE_USD` | 否 | 可选的手动订阅价格，仅用于本月 API 等值工作量的回本比较。 |
+| `CODEX_GATEWAY_USAGE_PERIOD_START` | 否 | 当前计费周期的可选 ISO 时间戳；默认使用 UTC 月初。 |
 | `HOST`                        | 否               | Nuxt 监听地址。Docker 使用 `0.0.0.0`。                                                           |
 | `PORT`                        | 否               | Nuxt 监听端口。Docker 使用 `3000`。                                                              |
 | `BROWSER_PREVIEW_DOMAIN`      | 使用浏览器预览时 | 隔离预览 origin 使用的父域名；需要为 `p-*.your-domain` 配置 wildcard DNS。                       |
@@ -228,6 +230,14 @@ pnpm user:create <username> <password>
 ```
 
 `CODEX_GATEWAY_CONFIG_SECRET` 用于加密保存连接配置。生产环境必须设置稳定且足够长的 secret；更换 secret 会导致已有加密配置无法解密。
+
+Gateway 会在 app-server 提供原始事件时记录精确的上游响应用量，否则使用经过保护的累计
+Token 差值回退。消息尾部显示 API 等值成本和观测到的账户配额变化，不会把订阅配额假装成
+预付美元钱包。订阅价格不会从 `planType` 自动推断，只用于月度回本汇总。统计范围是通过
+此 Gateway 数据库观测到的 turn；未接入此 Gateway 的独立 Codex 安装不会自动计入。
+在 Gateway 中打开 `/usage`，即可查看会自动刷新的周/月历史页面。页面会轮询所有已配置主机
+的当前供应商配额窗口，将结构化配额观察值保存到 SQLite；即使主机离线或供应商窗口重置，
+历史 turn 数据也会保留。
 
 ## 安全模型
 

@@ -42,6 +42,10 @@ function normalizeTokenBreakdown(value: unknown): TokenUsageBreakdown | null {
   };
 }
 
+export function normalizeTokenUsageBreakdown(value: unknown): TokenUsageBreakdown | null {
+  return normalizeTokenBreakdown(value);
+}
+
 function numberOrNull(value: unknown) {
   if (value == null) {
     return null;
