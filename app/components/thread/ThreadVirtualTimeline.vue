@@ -14,6 +14,7 @@ import { buildThreadTurnSections } from "@/components/thread/thread-turn-section
 import { useIntermediateStepsDisclosure } from "@/components/thread/useIntermediateStepsDisclosure";
 import { provideFilePreviewContext } from "@/composables/files/useFilePreviewContext";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
+import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { collaborationModeFromThreadSettings } from "@/utils/thread-collaboration-mode";
 
 const props = defineProps<{
@@ -35,6 +36,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const composer = useGatewayComposerStore();
+const runtime = useGatewayThreadRuntimeStore();
 const userDetachedFromLatest = ref(false);
 const timelineViewport = ref<InstanceType<typeof VirtualTimelineViewport> | null>(null);
 const projectId = computed(() => props.projectId ?? null);
@@ -103,6 +105,10 @@ const rows = computed<ThreadTimelineRow[]>((previous) => {
     threadId: props.threadId,
     turns: timelineTurns,
     agentActionsAvailable,
+    getTurnUsage: (turnId) =>
+      props.hostId === null || props.threadId === null
+        ? null
+        : runtime.turnUsageFor(props.hostId, props.threadId, turnId),
   });
   // A streaming delta invalidates the row list but normally changes only one item. Preserve all
   // other row identities so Vue and Markdown renderers do not repeat work inside the virtual

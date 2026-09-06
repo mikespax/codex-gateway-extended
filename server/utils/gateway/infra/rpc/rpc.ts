@@ -1,7 +1,11 @@
 import { EventEmitter } from "@posva/event-emitter";
 import type { HostRecord, RpcEnvelope } from "~~/shared/types";
 import { parseRpcEnvelope } from "~~/shared/runtime/app-server";
-import { SUPPORTED_CODEX_VERSION } from "../codex/codex-version";
+import {
+  parseCodexVersion,
+  SUPPORTED_APP_SERVER_SCHEMA_HASH,
+  SUPPORTED_CODEX_VERSION,
+} from "../codex/codex-version";
 import { codexRuntime } from "../host-services";
 import { hostLifecycleBus } from "../../state/host-events";
 import { RpcRequestBroker } from "./rpc-request-broker";
@@ -43,6 +47,7 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
   private readonly requests = new RpcRequestBroker();
   private transport: RpcTransport | null = null;
   private deferredUpgrade = false;
+  private connectedCodexVersion: string | null = null;
 
   constructor(
     private readonly host: HostRecord,
@@ -91,7 +96,7 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
       await this.connectRemoteProxyWebSocket(generation);
     }
 
-    await this.request(
+    const initializeResult = await this.request(
       "initialize",
       {
         clientInfo: {
@@ -108,8 +113,14 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
         },
       },
       30_000,
+      parseInitializeResponse,
     );
     this.assertCurrentConnection(generation);
+    this.connectedCodexVersion =
+      versionState?.appServerVersion ??
+      versionState?.version ??
+      parseCodexVersion(initializeResult.userAgent ?? "")?.version ??
+      null;
     this.notify("initialized", {});
     this.initialized = true;
     hostLifecycleBus.emit({
@@ -193,6 +204,7 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
     // transport after Host deletion/reconfiguration has already closed this client.
     this.connectionGeneration += 1;
     this.initialized = false;
+    this.connectedCodexVersion = null;
     this.connectPromise = null;
     this.requests.rejectAll(new Error("Codex RPC client closed"));
     this.transport?.close();
@@ -205,6 +217,16 @@ export class CodexRpcClient extends EventEmitter<CodexRpcClientEvents> {
 
   resolveDeferredUpgrade() {
     this.deferredUpgrade = false;
+  }
+
+  protocolVersion() {
+    return this.connectedCodexVersion;
+  }
+
+  protocolSchemaHash() {
+    return this.connectedCodexVersion === SUPPORTED_CODEX_VERSION
+      ? SUPPORTED_APP_SERVER_SCHEMA_HASH
+      : null;
   }
 
   private async connectRemoteProxyWebSocket(generation: number) {

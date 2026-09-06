@@ -196,6 +196,79 @@ function migrate(db: DatabaseSync) {
       PRIMARY KEY (user_id, host_id, thread_id)
     );
 
+    CREATE TABLE IF NOT EXISTS usage_requests (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      account_scope_id TEXT NOT NULL,
+      host_id INTEGER NOT NULL,
+      thread_id TEXT NOT NULL,
+      turn_id TEXT NOT NULL,
+      response_id TEXT NOT NULL,
+      source TEXT NOT NULL CHECK (source IN ('raw_response', 'cumulative_delta')),
+      model TEXT,
+      reasoning_effort TEXT,
+      service_tier TEXT,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
+      api_equivalent_cost_micros INTEGER,
+      pricing_version TEXT,
+      pricing_completeness TEXT NOT NULL CHECK (pricing_completeness IN ('complete', 'partial', 'unknown')),
+      observed_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, account_scope_id, thread_id, response_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS usage_turns (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      account_scope_id TEXT NOT NULL,
+      host_id INTEGER NOT NULL,
+      thread_id TEXT NOT NULL,
+      turn_id TEXT NOT NULL,
+      usage_scope TEXT NOT NULL CHECK (usage_scope IN ('direct_turn', 'inclusive_descendants')),
+      usage_source TEXT NOT NULL CHECK (usage_source IN ('raw_responses', 'cumulative_delta', 'provider_thread_delta', 'unavailable')),
+      model TEXT,
+      reasoning_effort TEXT,
+      service_tier TEXT,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
+      api_equivalent_cost_micros INTEGER,
+      pricing_version TEXT,
+      pricing_completeness TEXT NOT NULL CHECK (pricing_completeness IN ('complete', 'partial', 'unknown')),
+      provider_estimated_credits_micros INTEGER,
+      provider_estimated_usd_micros INTEGER,
+      quota_before_json TEXT,
+      quota_after_json TEXT,
+      quota_deltas_json TEXT NOT NULL,
+      quota_attribution_confidence TEXT NOT NULL CHECK (quota_attribution_confidence IN ('account_observation', 'reset_between_snapshots', 'unavailable')),
+      terminal_status TEXT CHECK (terminal_status IN ('completed', 'failed', 'interrupted')),
+      protocol_version TEXT,
+      protocol_schema_hash TEXT,
+      observed_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, account_scope_id, thread_id, turn_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS usage_quota_observations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      account_scope_id TEXT NOT NULL,
+      host_id INTEGER NOT NULL,
+      window_key TEXT NOT NULL,
+      used_percent REAL NOT NULL,
+      remaining_percent REAL NOT NULL,
+      window_duration_mins INTEGER,
+      resets_at INTEGER,
+      limit_id TEXT,
+      limit_name TEXT,
+      plan_type TEXT,
+      observed_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
     CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_tmux_monitors_host
@@ -217,6 +290,18 @@ function migrate(db: DatabaseSync) {
       ON thread_snapshot_cache(user_id, last_accessed_at DESC);
     CREATE INDEX IF NOT EXISTS idx_thread_snapshot_cache_expiry
       ON thread_snapshot_cache(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_usage_requests_thread
+      ON usage_requests(user_id, account_scope_id, host_id, thread_id, turn_id, observed_at);
+    CREATE INDEX IF NOT EXISTS idx_usage_requests_account_turn
+      ON usage_requests(user_id, account_scope_id, thread_id, turn_id, observed_at);
+    CREATE INDEX IF NOT EXISTS idx_usage_turns_thread
+      ON usage_turns(user_id, account_scope_id, host_id, thread_id, observed_at);
+    CREATE INDEX IF NOT EXISTS idx_usage_turns_month
+      ON usage_turns(user_id, observed_at, api_equivalent_cost_micros);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_turns_account_turn
+      ON usage_turns(user_id, account_scope_id, thread_id, turn_id);
+    CREATE INDEX IF NOT EXISTS idx_usage_quota_observations_latest
+      ON usage_quota_observations(user_id, account_scope_id, window_key, observed_at DESC);
   `);
 
   ensureSupervisorGrantColumns(db);

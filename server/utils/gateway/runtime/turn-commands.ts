@@ -16,6 +16,7 @@ import { logProviderDecision } from "../provider-router/logging";
 import type { ProviderDecision } from "../provider-router/types";
 import type { ThreadController } from "./thread-controller";
 import { deepseekModelForImage } from "../provider-router/models";
+import { turnUsageAccounting } from "../usage/turn-usage-accounting";
 
 export class ThreadTurnCommandService {
   constructor(
@@ -50,6 +51,7 @@ export class ThreadTurnCommandService {
         );
         const result = await this.startWithDecision(
           controller,
+          host,
           threadId,
           clientUserMessageId,
           input,
@@ -90,6 +92,7 @@ export class ThreadTurnCommandService {
           );
           const result = await this.startWithDecision(
             controller,
+            host,
             threadId,
             clientUserMessageId,
             input,
@@ -113,6 +116,7 @@ export class ThreadTurnCommandService {
           await controller.ensureProvider("openai", fallbackDecision.model);
           const result = await this.startWithDecision(
             controller,
+            host,
             threadId,
             clientUserMessageId,
             input,
@@ -144,6 +148,7 @@ export class ThreadTurnCommandService {
           try {
             const result = await this.startWithDecision(
               controller,
+              host,
               threadId,
               clientUserMessageId,
               input,
@@ -164,6 +169,7 @@ export class ThreadTurnCommandService {
               await controller.ensureProvider("openai", fallbackDecision.model);
               const result = await this.startWithDecision(
                 controller,
+                host,
                 threadId,
                 clientUserMessageId,
                 input,
@@ -191,27 +197,34 @@ export class ThreadTurnCommandService {
     });
   }
 
-  private startWithDecision(
+  private async startWithDecision(
     controller: ThreadController,
+    host: HostRecord,
     threadId: string,
     clientUserMessageId: string,
     input: TurnStartInput,
     decision: ProviderDecision,
   ) {
     const routedInput = { ...input, model: decision.model };
-    return controller
-      .enqueue(() =>
-        controller.client.request(
-          "turn/start",
-          buildTurnStartParams(threadId, clientUserMessageId, routedInput),
-          120_000,
-          parseTurnStartResponse,
-        ),
-      )
-      .then((result) => {
-        controller.markActiveMainThread();
-        return result;
+    const result = await controller.enqueue(() =>
+      controller.client.request(
+        "turn/start",
+        buildTurnStartParams(threadId, clientUserMessageId, routedInput),
+        120_000,
+        parseTurnStartResponse,
+      ),
+    );
+    const startedTurn = recordFromUnknown(result)?.turn;
+    const turnId = stringFromUnknown(recordFromUnknown(startedTurn)?.id);
+    if (turnId !== null) {
+      turnUsageAccounting.registerTurnMetadata(host.id, threadId, turnId, {
+        model: decision.model ?? input.model ?? null,
+        effort: input.effort ?? null,
+        serviceTier: input.serviceTier ?? null,
       });
+    }
+    controller.markActiveMainThread();
+    return result;
   }
 
   async steerTurn(host: HostRecord, threadId: string, input: TurnSteerInput) {
@@ -235,6 +248,14 @@ export class ThreadTurnCommandService {
             parseTurnSteerResponse,
           ),
         );
+        const turnId = stringFromUnknown(recordFromUnknown(result)?.turnId);
+        if (turnId !== null) {
+          turnUsageAccounting.registerTurnMetadata(host.id, threadId, turnId, {
+            model: null,
+            effort: null,
+            serviceTier: null,
+          });
+        }
         controller.markActiveMainThread();
         return result;
       })

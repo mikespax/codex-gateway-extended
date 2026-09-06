@@ -10,10 +10,18 @@ import { runtimeStatusFromEvent } from "~~/shared/thread-runtime-status";
 import { idFromUnknown, recordFromUnknown } from "~~/shared/utils/records";
 import { threadRuntimeStatusHub } from "./thread-runtime-status-hub";
 import { observeProviderFailure } from "../provider-router/logging";
+import { runtimeLog } from "./runtime-log";
+import { turnUsageAccounting } from "../usage/turn-usage-accounting";
+import type { RateLimitsResolver } from "../usage/turn-usage-accounting";
 
 type ThreadEventSubscriber = (event: GatewayEvent) => void;
 export type ThreadGoalResolver = () => Promise<unknown>;
 export type ThreadMetadataResolver = () => Promise<unknown>;
+export interface ThreadRuntimeAccountingOptions {
+  resolveRateLimits?: RateLimitsResolver;
+  protocolVersion?: string | null;
+  protocolSchemaHash?: string | null;
+}
 
 class ThreadRuntimeEventBus {
   private readonly subscribers = new Map<string, Set<ThreadEventSubscriber>>();
@@ -23,7 +31,10 @@ class ThreadRuntimeEventBus {
     threadId: string,
     method: string,
     payload: RpcEnvelope,
-    options: { resolveGoal?: ThreadGoalResolver; resolveThread?: ThreadMetadataResolver } = {},
+    options: {
+      resolveGoal?: ThreadGoalResolver;
+      resolveThread?: ThreadMetadataResolver;
+    } & ThreadRuntimeAccountingOptions = {},
   ) {
     const envelope = parseRpcEnvelope(payload);
     observeProviderFailure(hostId, threadId, method, envelope.params);
@@ -35,6 +46,23 @@ class ThreadRuntimeEventBus {
     this.publish(event);
     this.publishRuntimeStatus(event);
     dispatchThreadRuntimeNotification(event, options);
+    void turnUsageAccounting
+      .observeEvent(event, options)
+      .then((usage) => {
+        if (usage === null) return;
+        this.record(hostId, threadId, "gateway/usage/turn", {
+          method: "gateway/usage/turn",
+          params: { threadId, usage },
+        });
+      })
+      .catch((error) => {
+        runtimeLog("turn usage accounting failed", {
+          hostId,
+          threadId,
+          method,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
     return event;
   }
 

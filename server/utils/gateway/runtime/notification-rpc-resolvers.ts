@@ -1,11 +1,15 @@
 import type { CodexRpcClient } from "../infra/rpc/rpc";
 import type { ThreadGoalResolver, ThreadMetadataResolver } from "./thread-runtime-events";
+import type { RateLimitsResolver } from "../usage/turn-usage-accounting";
 
 const NOTIFICATION_INSPECTION_TIMEOUT_MS = 10_000;
 
 export interface ThreadNotificationResolvers {
   resolveGoal: ThreadGoalResolver;
   resolveThread: ThreadMetadataResolver;
+  resolveRateLimits: RateLimitsResolver;
+  protocolVersion: string | null;
+  protocolSchemaHash: string | null;
 }
 
 export function createThreadNotificationResolvers(
@@ -23,5 +27,9 @@ export function createThreadNotificationResolvers(
         { threadId, includeTurns: false },
         NOTIFICATION_INSPECTION_TIMEOUT_MS,
       ),
+    resolveRateLimits: () =>
+      client.request("account/rateLimits/read", undefined, NOTIFICATION_INSPECTION_TIMEOUT_MS),
+    protocolVersion: client.protocolVersion(),
+    protocolSchemaHash: client.protocolSchemaHash(),
   };
 }
