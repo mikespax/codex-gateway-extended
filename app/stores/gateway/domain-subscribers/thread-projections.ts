@@ -51,6 +51,9 @@ export function registerThreadProjectionSubscribers() {
       event.tokenUsage,
     );
   });
+  gatewayDomainEvents.on("thread-turn-usage-detected", (event) => {
+    useGatewayThreadRuntimeStore().setThreadTurnUsage(event.hostId, event.usage);
+  });
   gatewayDomainEvents.on("history-item-upsert", (event) => {
     const activity = useGatewayThreadActivityStore();
     const lastUserInput = lastUserInputFromItem(event.item);

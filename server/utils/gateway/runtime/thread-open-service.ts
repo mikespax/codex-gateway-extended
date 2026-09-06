@@ -30,6 +30,7 @@ import {
   parseTurnsPage,
 } from "~~/shared/runtime/app-server";
 import { gatewayThreadFromAppServer } from "../protocol/gateway-thread";
+import { turnUsageRepository } from "../usage/turn-usage-repository";
 
 const THREAD_CACHE_VALIDATION_COOLDOWN_MS = 30_000;
 
@@ -413,6 +414,7 @@ export class ThreadOpenService {
         runtimeStatus: runtimeStatusFromThreadState(thread, history, recentEvents) ?? "running",
         threadSettings: snapshot.threadSettings,
         tokenUsage: snapshot.tokenUsage,
+        turnUsage: listTurnUsage(threadId),
         projectId,
         project: projectId === null ? null : projectStore.get(projectId),
         turnsPage,
@@ -550,6 +552,7 @@ export class ThreadOpenService {
       turnsPage: snapshot.turnsPage,
       threadSettings: snapshot.threadSettings,
       tokenUsage: latestTokenUsageFromEvents(recentEvents) ?? snapshot.tokenUsage,
+      turnUsage: listTurnUsage(threadId),
       recentEvents: snapshotRecentEvents(),
     };
   }
@@ -589,6 +592,7 @@ export class ThreadOpenService {
       turnsPage: snapshot.turnsPage,
       threadSettings: snapshot.threadSettings,
       tokenUsage: latestTokenUsageFromEvents(recentEvents) ?? snapshot.tokenUsage,
+      turnUsage: listTurnUsage(threadId),
       recentEvents: snapshotRecentEvents(),
     };
   }
@@ -757,6 +761,11 @@ function snapshotRecentEvents() {
   // events are replayed through thread.event after lastEventId, so the snapshot path intentionally
   // keeps this legacy field empty while runtime status/token usage are computed server-side above.
   return [];
+}
+
+function listTurnUsage(threadId: string) {
+  const userId = currentGatewayUserId();
+  return userId === null ? [] : turnUsageRepository.listThread(userId, threadId);
 }
 
 function applyEventsAfter(

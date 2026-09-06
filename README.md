@@ -259,6 +259,8 @@ Environment variables:
 | ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------- |
 | `CODEX_GATEWAY_CONFIG_SECRET` | Yes in production | Stable secret used to encrypt stored host/project/thread config.                                        |
 | `CODEX_GATEWAY_DB_PATH`       | No                | SQLite database path. Defaults to the app data path; Docker uses `/data/codex-gateway.db`.              |
+| `CODEX_GATEWAY_SUBSCRIPTION_PRICE_USD` | No | Optional manual subscription price used only for the monthly API-equivalent payback comparison. |
+| `CODEX_GATEWAY_USAGE_PERIOD_START` | No | Optional ISO timestamp for the current billing period; defaults to the first day of the UTC month. |
 | `HOST`                        | No                | Nuxt listen host. Docker uses `0.0.0.0`.                                                                |
 | `PORT`                        | No                | Nuxt listen port. Docker uses `3000`.                                                                   |
 | `BROWSER_PREVIEW_DOMAIN`      | Browser preview   | Parent domain for isolated preview origins; configure wildcard DNS for `p-*.your-domain`.               |
@@ -275,6 +277,16 @@ pnpm user:create <username> <password>
 ```
 
 `CODEX_GATEWAY_CONFIG_SECRET` encrypts stored connection config. Use a stable, sufficiently long secret in production. Changing it makes existing encrypted config unreadable.
+
+Gateway turn accounting records exact upstream response usage when the app-server exposes raw
+events, and otherwise uses a guarded cumulative-token fallback. The footer reports API-equivalent
+cost and observed account-quota movement; it does not claim that a subscription quota is a prepaid
+dollar wallet. The optional subscription price is never inferred from `planType` and is used only
+for the aggregate monthly payback comparison. Accounting is scoped to turns observed through this
+Gateway database, so direct Codex installs that are not connected to this Gateway are not included.
+Open `/usage` in the Gateway for a durable, auto-refreshing weekly/monthly history page. It polls
+all configured hosts for current provider rate-limit windows, stores structured quota observations
+in SQLite, and keeps historical turn data when a host is offline or a provider window resets.
 
 ## Security Model
 
