@@ -1,0 +1,61 @@
+name: Gateway quality
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run type checks
+        run: pnpm typecheck
+
+      - name: Run source lint
+        # The existing supervisor CLI scripts use Node's untyped DatabaseSync surface and are
+        # tracked separately until they receive explicit runtime schemas.
+        run: >-
+          pnpm exec oxlint app server shared tests nuxt.config.ts playwright.config.ts
+          tailwind.config.ts --ignore-pattern 'third_party/**' --ignore-pattern 'scripts/**'
+
+      - name: Run source formatting check
+        # These five legacy UI files predate the fork's formatter baseline; do not silently rewrite
+        # them as part of an unrelated release.
+        run: >-
+          pnpm exec oxfmt --check app server shared tests nuxt.config.ts playwright.config.ts
+          tailwind.config.ts '!app/assets/css/tailwind.css'
+          '!app/components/sidebar/GatewaySidebar.vue'
+          '!app/components/sidebar/SidebarWorkspaceToolbar.vue'
+          '!app/components/sidebar/thread-list/PinnedThreadList.vue'
+          '!app/components/sidebar/thread-list/RecentThreadList.vue'
+
+      - name: Build production bundle
+        run: pnpm build

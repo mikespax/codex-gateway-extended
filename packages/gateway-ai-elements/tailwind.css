@@ -1,0 +1,3 @@
+/* Import this file only when the application consumes AI Elements. Keeping registration package-
+   owned avoids hard-coded workspace paths and avoids generating unused utilities today. */
+@source "./dist";

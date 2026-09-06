@@ -1,0 +1,17 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**",
+        "scripts/**",
+        "package.json",
+        "tsconfig.json",
+        "vite.config.ts",
+        "rolldown.config.ts"
+      ],
+      "outputs": ["dist/**"]
+    }
+  }
+}

@@ -1,0 +1,44 @@
+diff --git a/dist/cjs/index.cjs b/dist/cjs/index.cjs
+index aab0e59d80c6dac3c926c1c25c6dfbfdf8cce679..ed6aea7fadcaed055b8d2e4fbb85cb838b4de620 100644
+--- a/dist/cjs/index.cjs
++++ b/dist/cjs/index.cjs
+@@ -1128,7 +1128,7 @@ class Virtualizer {
+     if (process.env.NODE_ENV !== "production" && this.options.debug) {
+       console.info("correction", delta);
+     }
+-    if (isIOSWebKit() && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
++    if (isIOSWebKit() && this.scrollState === null && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
+       this._iosDeferredAdjustment += delta;
+       return false;
+     } else {
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 015d77d5f60a174de2ca9a3777e8a842110ee6e8..38bf34525434667307640685b89f10c779431460 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -1126,7 +1126,7 @@ class Virtualizer {
+     if (process.env.NODE_ENV !== "production" && this.options.debug) {
+       console.info("correction", delta);
+     }
+-    if (isIOSWebKit() && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
++    if (isIOSWebKit() && this.scrollState === null && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
+       this._iosDeferredAdjustment += delta;
+       return false;
+     } else {
+diff --git a/src/index.ts b/src/index.ts
+index e209208a6d1b4e0713f78deab96598819ed697ad..709932d6043f8bf15b0cc711d9ac4b7e9ab43563 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -693,8 +693,13 @@ export class Virtualizer<
+       console.info('correction', delta)
+     }
+ 
++    // `isScrolling` also becomes true when scrollToIndex/scrollToEnd receives its own scroll-event
++    // read-back. That is a Core-owned transaction, not native touch momentum: deferring dynamic
++    // row corrections there lets the estimated last row settle above the real bottom on WebKit.
++    // Only user-owned scrolling (no active scrollState) must defer writes to preserve momentum.
+     if (
+       isIOSWebKit() &&
++      this.scrollState === null &&
+       (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)
+     ) {
+       this._iosDeferredAdjustment += delta

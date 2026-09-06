@@ -1,0 +1,380 @@
+import { expect, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { z } from "zod";
+import { envFile, upgradeEnvFile } from "../docker-environment";
+import { connectTestSsh, execTestSsh } from "./ssh-client";
+
+export type RemoteRuntimeFixture = "empty-runtime" | "legacy-node" | "legacy-codex";
+
+const remoteCodexEnvSchema = z
+  .object({
+    host: z.string().min(1),
+    port: z.string().min(1),
+    username: z.string().min(1),
+    password: z.string().min(1),
+    projectPath: z.string().min(1),
+    imagePath: z.string().min(1),
+    runtimeFixture: z.enum(["empty-runtime", "legacy-node", "legacy-codex"]).optional(),
+    initialNodeVersion: z.string().min(1).nullable().optional(),
+    initialCodexVersion: z.string().min(1).nullable().optional(),
+    supportedCodexVersion: z.string().min(1).optional(),
+    testModel: z.string().min(1).optional(),
+    codexBin: z.string().min(1).optional(),
+    proxyUrl: z.string().min(1).nullable().optional(),
+  })
+  .loose();
+
+export type RemoteCodexEnv = z.infer<typeof remoteCodexEnvSchema>;
+
+export interface UiHost {
+  id: number;
+}
+
+export interface UiProject {
+  id: number;
+  hostId: number;
+  name: string;
+  remotePath: string;
+}
+
+const uiHostSchema = z.object({ id: z.number().int().positive() }).loose();
+const uiProjectSchema = z
+  .object({
+    id: z.number().int().positive(),
+    hostId: z.number().int().positive(),
+    name: z.string().min(1),
+    remotePath: z.string().min(1),
+  })
+  .loose();
+
+export async function readRemoteEnv() {
+  return remoteCodexEnvSchema.parse(JSON.parse(await readFile(envFile, "utf8")));
+}
+
+export async function readUpgradeRemoteEnvs() {
+  return z.array(remoteCodexEnvSchema).parse(JSON.parse(await readFile(upgradeEnvFile, "utf8")));
+}
+
+export async function readContainerCodexVersion(remote: RemoteCodexEnv) {
+  return await runRemoteCodexVersion(remote);
+}
+
+export async function execRemoteSsh(remote: RemoteCodexEnv, command: string) {
+  const connection = await connectTestSsh(remote);
+  try {
+    return await execTestSsh(connection, command);
+  } finally {
+    connection.end();
+  }
+}
+
+export async function stopRemoteFixture(remote: RemoteCodexEnv) {
+  // Auxiliary upgrade Hosts are not used by the product E2E suite. Stop their PID 1 after the
+  // matrix test so they cannot retain an SSH connection, app-server, or memory for later tests.
+  await execRemoteSsh(
+    remote,
+    `(sleep 0.1; printf '%s\\n' ${shellQuote(remote.password)} | sudo -S kill -TERM 1) >/dev/null 2>&1 &`,
+  );
+}
+
+export async function resetRemoteAppServer(remote: RemoteCodexEnv) {
+  await execRemoteSsh(
+    remote,
+    `
+set -eu
+socket="\${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
+daemon_dir="\${CODEX_HOME:-$HOME/.codex}/app-server-daemon"
+pids="$(ps -eo pid=,args= | awk -v self="$$" '
+  $1 != self && index($0, "codex app-server") && !index($0, "awk") { print $1 }
+')"
+if [ -n "$pids" ]; then
+  kill -TERM $pids >/dev/null 2>&1 || true
+fi
+for i in $(seq 1 100); do
+  if ! ps -eo pid=,args= | awk -v self="$$" '
+    $1 != self && index($0, "codex app-server") && !index($0, "awk") { found = 1 }
+    END { exit found ? 0 : 1 }
+  '; then
+    break
+  fi
+  sleep 0.1
+done
+pids="$(ps -eo pid=,args= | awk -v self="$$" '
+  $1 != self && index($0, "codex app-server") && !index($0, "awk") { print $1 }
+')"
+if [ -n "$pids" ]; then
+  kill -KILL $pids >/dev/null 2>&1 || true
+fi
+rm -f "$socket"
+rm -f "$daemon_dir"/app-server.pid "$daemon_dir"/app-server.pid.lock "$daemon_dir"/app-server.stderr.log
+`,
+  );
+}
+
+export async function startRemotePreviewServer(remote: RemoteCodexEnv) {
+  const nodeBin = remote.codexBin?.replace(/\/codex$/, "/node");
+  if (nodeBin === undefined || nodeBin === "") throw new Error("Missing managed remote Node path");
+  await execRemoteSsh(
+    remote,
+    `
+set -eu
+if [ -f /tmp/codex-preview-server.pid ]; then
+  kill "$(cat /tmp/codex-preview-server.pid)" >/dev/null 2>&1 || true
+fi
+nohup ${shellQuote(nodeBin)} /usr/local/lib/codex-preview-server.mjs >/tmp/codex-preview-server.log 2>&1 </dev/null &
+echo $! >/tmp/codex-preview-server.pid
+for i in $(seq 1 50); do
+  if ${shellQuote(nodeBin)} -e 'const s=require("net").connect(4173,"127.0.0.1",()=>{s.end();process.exit(0)});s.on("error",()=>process.exit(1))' >/dev/null 2>&1; then
+    exit 0
+  fi
+  sleep 0.1
+done
+cat /tmp/codex-preview-server.log >&2 || true
+exit 1
+`,
+  );
+}
+
+export async function addRemoteHost(
+  page: Page,
+  remote: RemoteCodexEnv,
+  name = `docker-codex-${Date.now()}`,
+) {
+  await openSettingsTab(page, /Hosts|主机/);
+  const hostForm = page
+    .getByTestId("add-host-button")
+    .locator("xpath=ancestor::div[.//*[@data-testid='host-name-input']][1]");
+  await hostForm.getByTestId("host-name-input").fill(name);
+  await hostForm.getByTestId("host-ssh-input").fill(remote.host);
+  await hostForm.getByPlaceholder(/User|用户/).fill(remote.username);
+  await hostForm.getByPlaceholder(/Port|端口/).fill(remote.port);
+  if (remote.proxyUrl !== undefined) {
+    await hostForm.getByTestId("host-proxy-url-input").fill(remote.proxyUrl ?? "");
+  }
+  await hostForm.getByTestId("host-auth-select").click();
+  await page.getByTestId("host-auth-password-option").click();
+  await hostForm.getByPlaceholder(/SSH password|SSH 密码/).fill(remote.password);
+
+  const hostResponsePromise = page.waitForResponse(
+    (response) => response.url().endsWith("/api/hosts") && response.request().method() === "POST",
+  );
+  await hostForm.getByTestId("add-host-button").click();
+  const host = uiHostSchema.parse(await (await hostResponsePromise).json());
+  await closeSettings(page);
+  await expect(hostConnectedIndicator(page, host.id)).toBeVisible({ timeout: 120_000 });
+  if (
+    remote.initialCodexVersion !== undefined &&
+    remote.initialCodexVersion !== null &&
+    remote.supportedCodexVersion !== undefined &&
+    remote.initialCodexVersion !== remote.supportedCodexVersion
+  ) {
+    const upgradedVersionResponse = await runRemoteCodexVersion(remote);
+    expect(upgradedVersionResponse).toContain(remote.supportedCodexVersion);
+  }
+  return host;
+}
+
+function hostConnectedIndicator(page: Page, hostId: number) {
+  return page.getByTestId(`host-button-${hostId}`).getByLabel(/已连接|Connected/);
+}
+
+export async function addRemoteProject(
+  page: Page,
+  remote: RemoteCodexEnv,
+  hostId: number,
+  name = `remote-project-${Date.now()}`,
+  remotePath = remote.projectPath,
+) {
+  await page.getByTestId(`host-button-${hostId}`).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /添加项目|Add project/ }).click();
+  await page.getByTestId("project-name-input").fill(name);
+  await page.getByTestId("project-path-input").fill(remotePath);
+
+  const projectResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/projects") && response.request().method() === "POST",
+  );
+  await page.getByTestId("add-project-button").click();
+  const project = uiProjectSchema.parse(await (await projectResponsePromise).json());
+  await expect(page.getByTestId(`host-button-${hostId}`)).toBeVisible();
+  await expect(page.getByTestId(`project-button-${project.id}`)).toBeVisible();
+  return project;
+}
+
+export async function startRemoteThreadFromProjectMenu(
+  page: Page,
+  remote: RemoteCodexEnv,
+  projectId: number,
+) {
+  await page.getByTestId(`project-button-${projectId}`).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New|新建/ }).click();
+  const threadId = await waitForSelectedThreadId(page);
+  await expect(page.getByPlaceholder(/Ask for follow-up changes|输入后续修改要求/)).toBeEnabled();
+  await expect(page.getByTestId(`thread-button-${threadId}`)).toBeVisible({ timeout: 30_000 });
+  if (remote.testModel !== undefined && remote.testModel !== "") {
+    await page.evaluate(async (model) => {
+      const composer = window.__codexGatewayE2e?.composer;
+      if (!composer) {
+        throw new Error("Unable to locate gateway composer Pinia store");
+      }
+      await composer.saveSelectedThreadSettings({ model });
+    }, remote.testModel);
+  }
+  return threadId;
+}
+
+export async function waitForSelectedThreadId(page: Page) {
+  const handle = await page.waitForFunction(
+    () => new URLSearchParams(window.location.search).get("threadId"),
+    undefined,
+    { timeout: 30_000 },
+  );
+  const threadId = await handle.jsonValue();
+  return String(threadId);
+}
+
+export async function sendTextTurn(
+  page: Page,
+  marker: string,
+  context?: { hostId: number; threadId: string; cwd?: string },
+) {
+  if (context) {
+    await expect
+      .poll(async () => (await currentRouteSelection(page)).threadId, { timeout: 10_000 })
+      .toBe(context.threadId);
+  }
+  await page
+    .getByPlaceholder(/Ask for follow-up changes|输入后续修改要求/)
+    .fill(`用一句话回复：${marker}`);
+  await page.getByTestId("send-turn-button").click();
+}
+
+export async function selectSidebarThread(page: Page, threadId: string) {
+  const button = page.getByTestId(`thread-button-${threadId}`);
+  await button.click();
+  // Opening a remote thread crosses navigation, cache, and app-server boundaries. A click only
+  // proves input delivery; waiting on the public selected state prevents subsequent composer
+  // operations from racing the previous thread under a loaded E2E or production browser.
+  await expect(button).toHaveAttribute("data-selected", "true");
+  await expect
+    .poll(async () => new URL(page.url()).searchParams.get("threadId"), { timeout: 30_000 })
+    .toBe(threadId);
+  await expect
+    .poll(
+      () => page.evaluate(() => window.__codexGatewayE2e?.navigation.selectedThreadId ?? null),
+      { timeout: 30_000 },
+    )
+    .toBe(threadId);
+}
+
+export async function sendSteerText(page: Page, marker: string) {
+  await page
+    .getByPlaceholder(/Ask for follow-up changes|输入后续修改要求/)
+    .fill(`追加要求：${marker}`);
+  await page.getByTestId("send-turn-button").click();
+}
+
+export async function sendImageTurnThroughGateway(
+  page: Page,
+  remote: RemoteCodexEnv,
+  params: {
+    hostId: number;
+    threadId: string;
+    cwd: string;
+    imagePath: string;
+    marker: string;
+  },
+) {
+  await expect
+    .poll(async () => (await currentRouteSelection(page)).threadId, { timeout: 10_000 })
+    .toBe(params.threadId);
+  await page.evaluate(
+    async ({ marker, imagePath, model }) => {
+      const store = window.__codexGatewayE2e?.turns;
+      if (!store) {
+        throw new Error("Unable to locate gateway thread-turns Pinia store");
+      }
+      await store.sendTurn(`回复：${marker}`, {
+        model: model === null || model === "" ? undefined : model,
+        images: [{ path: imagePath, detail: "original" }],
+      });
+    },
+    {
+      marker: params.marker,
+      imagePath: params.imagePath,
+      model: remote.testModel ?? null,
+    },
+  );
+}
+
+async function openSettings(page: Page) {
+  if (
+    await page
+      .getByTestId("settings-panel")
+      .isVisible()
+      .catch(() => false)
+  ) {
+    return;
+  }
+  await page.getByTestId("settings-toggle").click();
+  await expect(page.getByTestId("settings-panel")).toBeVisible();
+}
+
+async function openSettingsTab(page: Page, tabName: string | RegExp) {
+  await openSettings(page);
+  await page.getByRole("tab", { name: tabName }).click();
+}
+
+async function closeSettings(page: Page) {
+  const panel = page.getByTestId("settings-panel");
+  await expect(panel)
+    .toBeHidden({ timeout: 1_000 })
+    .catch(() => null);
+  if (!(await panel.isVisible().catch(() => false))) {
+    return;
+  }
+  // Adding a Host updates the Dockview contents and may replace its dialog subtree. Use the
+  // dialog's keyboard close contract instead of retaining a close button that can be detached.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("settings-dialog")).toBeHidden();
+}
+
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+async function runRemoteCodexVersion(remote: RemoteCodexEnv) {
+  const { stdout } = await execRemoteSsh(remote, `${remoteCodexCommand(remote)} --version`);
+  return stdout.trim();
+}
+
+export function remoteCodexCommand(remote: RemoteCodexEnv) {
+  if (remote.codexBin !== undefined && remote.codexBin !== "") {
+    const binDirectory = remote.codexBin.replace(/\/[^/]+$/, "");
+    return `env PATH=${shellQuote(binDirectory)}:"$PATH" ${shellQuote(remote.codexBin)}`;
+  }
+  const candidates = ["$HOME/.npm-global/bin/codex", "$HOME/.local/bin/codex"];
+  const candidateList = candidates.map(shellQuote).join(" ");
+  return `$(
+for candidate in ${candidateList}; do
+  if [ -x "$candidate" ]; then
+    printf '%s\\n' "$candidate"
+    exit 0
+  fi
+done
+command -v codex 2>/dev/null || printf '%s\\n' codex
+)`;
+}
+
+async function currentRouteSelection(page: Page) {
+  return page.evaluate(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hostId = Number(params.get("hostId"));
+    const projectId = Number(params.get("projectId"));
+    return {
+      hostId: Number.isInteger(hostId) && hostId > 0 ? hostId : null,
+      projectId: Number.isInteger(projectId) && projectId > 0 ? projectId : null,
+      threadId: params.get("threadId") ?? null,
+    };
+  });
+}

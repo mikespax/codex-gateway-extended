@@ -1,0 +1,49 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "1m"
+    max-file: "3"
+
+services:
+  codex-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_SHA: ${CODEX_GATEWAY_BUILD_SHA:-unknown}
+    container_name: codex-gateway
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 1g
+    memswap_limit: 1g
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      BROWSER_PREVIEW_DOMAIN: ${BROWSER_PREVIEW_DOMAIN:-cloudawn.top}
+      CODEX_GATEWAY_DB_PATH: /data/codex-gateway.db
+      CODEX_GATEWAY_CONFIG_SECRET: ${CODEX_GATEWAY_CONFIG_SECRET:?CODEX_GATEWAY_CONFIG_SECRET is required}
+    volumes:
+      - ./data:/data
+    # Keep liveness probes side-effect free. Nitro owns periodic GC so probe retries or Docker
+    # daemon pauses cannot change application memory lifecycle.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(3000,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - web-common
+
+networks:
+  web-common:
+    external: true

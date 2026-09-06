@@ -1,0 +1,46 @@
+# Nuxt dev/build outputs
+.output
+.data
+
+# Generated workspace package output.
+packages/*/dist
+.nuxt
+.nitro
+.cache
+.turbo
+dist
+data
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+
+# Local env files
+.env
+.env.*
+!.env.example
+test-results
+.data-e2e
+.e2e-runtime
+.data
+
+# Android companion local/build state
+android/.gradle
+android/local.properties
+android/**/build
+android/**/*.jks
+android/**/*.keystore
+android/app/google-services.json
+secrets/firebase-service-account*.json
+
+# Local release overlays, preservation patches, and public SSH key copies
+docker-compose.override.yml
+local-patches/
+secrets/*.pub

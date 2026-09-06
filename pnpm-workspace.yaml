@@ -1,0 +1,97 @@
+# Keep TypeScript on 6.x until both sides of the build toolchain support 7.x:
+# vue-tsc currently imports the removed `typescript/lib/tsc` subpath, while
+# @nuxtjs/i18n's compile-time source analysis reaches
+# @typescript-eslint/typescript-estree, whose peer range still excludes TS 7.
+# The parser is build-only and is not copied into the production runner. Do not
+# upgrade TypeScript in isolation merely because `pnpm outdated` advertises 7.x.
+packages:
+  - "packages/*"
+
+allowBuilds:
+  "@parcel/watcher": true
+  better-sqlite3: true
+  cpu-features: true
+  esbuild: true
+  maplibre-gl: false
+  ssh2: true
+  vue-demi: true
+
+minimumReleaseAgeExclude:
+  - "katex@0.18.0"
+  - "@nuxt/kit@4.5.1"
+  - "@nuxt/nitro-server@4.5.1"
+  - "@nuxt/schema@4.5.1"
+  - "@nuxt/vite-builder@4.5.1"
+  - "@nuxt/devtools@3.3.1"
+  - "nuxt@4.5.1"
+  - "@open-file-viewer/core@0.1.32"
+  - "@oxc-parser/binding-android-arm-eabi@0.142.0"
+  - "@oxc-parser/binding-android-arm64@0.142.0"
+  - "@oxc-parser/binding-darwin-arm64@0.142.0"
+  - "@oxc-parser/binding-darwin-x64@0.142.0"
+  - "@oxc-parser/binding-freebsd-x64@0.142.0"
+  - "@oxc-parser/binding-linux-arm-gnueabihf@0.142.0"
+  - "@oxc-parser/binding-linux-arm-musleabihf@0.142.0"
+  - "@oxc-parser/binding-linux-arm64-gnu@0.142.0"
+  - "@oxc-parser/binding-linux-arm64-musl@0.142.0"
+  - "@oxc-parser/binding-linux-ppc64-gnu@0.142.0"
+  - "@oxc-parser/binding-linux-riscv64-gnu@0.142.0"
+  - "@oxc-parser/binding-linux-riscv64-musl@0.142.0"
+  - "@oxc-parser/binding-linux-s390x-gnu@0.142.0"
+  - "@oxc-parser/binding-linux-x64-gnu@0.142.0"
+  - "@oxc-parser/binding-linux-x64-musl@0.142.0"
+  - "@oxc-parser/binding-openharmony-arm64@0.142.0"
+  - "@oxc-parser/binding-wasm32-wasi@0.142.0"
+  - "@oxc-parser/binding-win32-arm64-msvc@0.142.0"
+  - "@oxc-parser/binding-win32-ia32-msvc@0.142.0"
+  - "@oxc-parser/binding-win32-x64-msvc@0.142.0"
+  - "@oxc-project/types@0.142.0"
+  - "oxc-parser@0.142.0"
+  - "@oxfmt/binding-android-arm-eabi@0.61.0"
+  - "@oxfmt/binding-android-arm64@0.61.0"
+  - "@oxfmt/binding-darwin-arm64@0.61.0"
+  - "@oxfmt/binding-darwin-x64@0.61.0"
+  - "@oxfmt/binding-freebsd-x64@0.61.0"
+  - "@oxfmt/binding-linux-arm-gnueabihf@0.61.0"
+  - "@oxfmt/binding-linux-arm-musleabihf@0.61.0"
+  - "@oxfmt/binding-linux-arm64-gnu@0.61.0"
+  - "@oxfmt/binding-linux-arm64-musl@0.61.0"
+  - "@oxfmt/binding-linux-ppc64-gnu@0.61.0"
+  - "@oxfmt/binding-linux-riscv64-gnu@0.61.0"
+  - "@oxfmt/binding-linux-riscv64-musl@0.61.0"
+  - "@oxfmt/binding-linux-s390x-gnu@0.61.0"
+  - "@oxfmt/binding-linux-x64-gnu@0.61.0"
+  - "@oxfmt/binding-linux-x64-musl@0.61.0"
+  - "@oxfmt/binding-openharmony-arm64@0.61.0"
+  - "@oxfmt/binding-win32-arm64-msvc@0.61.0"
+  - "@oxfmt/binding-win32-ia32-msvc@0.61.0"
+  - "@oxfmt/binding-win32-x64-msvc@0.61.0"
+  - "oxfmt@0.61.0"
+  - "@oxlint/binding-android-arm-eabi@1.76.0"
+  - "@oxlint/binding-android-arm64@1.76.0"
+  - "@oxlint/binding-darwin-arm64@1.76.0"
+  - "@oxlint/binding-darwin-x64@1.76.0"
+  - "@oxlint/binding-freebsd-x64@1.76.0"
+  - "@oxlint/binding-linux-arm-gnueabihf@1.76.0"
+  - "@oxlint/binding-linux-arm-musleabihf@1.76.0"
+  - "@oxlint/binding-linux-arm64-gnu@1.76.0"
+  - "@oxlint/binding-linux-arm64-musl@1.76.0"
+  - "@oxlint/binding-linux-ppc64-gnu@1.76.0"
+  - "@oxlint/binding-linux-riscv64-gnu@1.76.0"
+  - "@oxlint/binding-linux-riscv64-musl@1.76.0"
+  - "@oxlint/binding-linux-s390x-gnu@1.76.0"
+  - "@oxlint/binding-linux-x64-gnu@1.76.0"
+  - "@oxlint/binding-linux-x64-musl@1.76.0"
+  - "@oxlint/binding-openharmony-arm64@1.76.0"
+  - "@oxlint/binding-win32-arm64-msvc@1.76.0"
+  - "@oxlint/binding-win32-ia32-msvc@1.76.0"
+  - "@oxlint/binding-win32-x64-msvc@1.76.0"
+  - "oxlint@1.76.0"
+  - "@tanstack/virtual-core@3.17.7"
+  - "@tanstack/vue-virtual@3.13.35"
+
+overrides:
+  crossws: 0.4.7
+
+patchedDependencies:
+  '@tanstack/virtual-core@3.17.7': patches/@tanstack__virtual-core@3.17.7.patch

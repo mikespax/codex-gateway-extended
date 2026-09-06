@@ -1,0 +1,161 @@
+x-ssh-target: &ssh-target
+  environment:
+    CODEX_HOME: /home/codex/.codex
+  volumes:
+    - ../..:/workspace/codex-gateway
+
+services:
+  bark-target:
+    image: node:22-bookworm
+    command: ["node", "/app/bark-server.ts"]
+    environment:
+      BARK_TEST_PORT: "8080"
+      BARK_TEST_LOG: /requests/requests.jsonl
+    volumes:
+      - ./bark-server.ts:/app/bark-server.ts:ro
+      - bark-requests:/requests
+
+  ssh-target:
+    build:
+      context: ./docker
+      target: empty-runtime
+      args:
+        E2E_UID: ${E2E_UID:-12345}
+        E2E_GID: ${E2E_GID:-12345}
+    <<: *ssh-target
+
+  ssh-target-legacy-node:
+    build:
+      context: ./docker
+      target: legacy-node
+      args:
+        E2E_UID: ${E2E_UID:-12345}
+        E2E_GID: ${E2E_GID:-12345}
+    <<: *ssh-target
+
+  ssh-target-legacy-codex:
+    build:
+      context: ./docker
+      target: legacy-codex
+      args:
+        CODEX_CLI_VERSION: ${E2E_CODEX_CLI_VERSION:-0.140.0}
+        E2E_UID: ${E2E_UID:-12345}
+        E2E_GID: ${E2E_GID:-12345}
+    <<: *ssh-target
+
+  build-runner:
+    image: codex-gateway-e2e-runner
+    # Keep CI and constrained hosts bounded by default. Local runs can opt into a larger, still
+    # explicit cgroup using E2E_BUILD_MEMORY_LIMIT (for example, 4g).
+    mem_limit: ${E2E_BUILD_MEMORY_LIMIT:-2g}
+    build:
+      context: ../..
+      dockerfile: tests/e2e/runner.Dockerfile
+    environment:
+      # Keep enough cgroup headroom for Rolldown/Nitro native allocations while allowing the
+      # JavaScript heap to finish the production bundle. Keep this aligned with the explicit
+      # E2E_BUILD_MEMORY_LIMIT override when increasing the local build budget.
+      NODE_OPTIONS: ${E2E_BUILD_NODE_OPTIONS:---max-old-space-size=1536}
+      CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
+      E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
+      E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}
+    volumes:
+      - build-output:/e2e-output
+      - e2e-data:/workspace/codex-gateway/.data-e2e
+      # Only disposable Vite/Nuxt transforms persist between runs; .nuxt and .output are rebuilt.
+      - e2e-nuxt-vite-cache:/workspace/codex-gateway/node_modules/.cache
+
+  gateway-under-test:
+    image: codex-gateway-e2e-runner
+    mem_limit: 2g
+    depends_on:
+      - ssh-target
+      - ssh-target-legacy-node
+      - ssh-target-legacy-codex
+      - bark-target
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3100"
+      CODEX_GATEWAY_CONFIG_SECRET: e2e-config-secret
+      CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
+      NUXT_IGNORE_LOCK: "1"
+      # Preview origins enter through the nginx sidecar below. This mirrors production so remote
+      # /_nuxt/* assets cannot be intercepted as Gateway public assets before reaching the proxy.
+      BROWSER_PREVIEW_PUBLIC_PORT: "3200"
+      BROWSER_PREVIEW_DOMAIN: 127.0.0.1.nip.io
+      BROWSER_PREVIEW_SCHEME: http
+    volumes:
+      - build-output:/e2e-output:ro
+      - e2e-data:/workspace/codex-gateway/.data-e2e
+    # Exercise the same V8 memory policy as production; the wider 2 GiB cgroup remains available
+    # to Playwright's shared test topology and native browser/runtime allocations.
+    command: ["node", "--expose-gc", "--max-old-space-size=512", "/e2e-output/server/index.mjs"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('node:net').connect(3100,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))",
+        ]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+
+  browser-preview-ingress:
+    image: nginx:1.29-alpine
+    network_mode: service:gateway-under-test
+    depends_on:
+      gateway-under-test:
+        condition: service_healthy
+    volumes:
+      - ./docker/browser-preview-nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      # An unauthenticated preview request correctly returns 401, so readiness probes the listener
+      # rather than treating an application status code as an ingress failure.
+      test: ["CMD", "nc", "-z", "127.0.0.1", "3200"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  test-runner:
+    image: codex-gateway-e2e-runner
+    mem_limit: 2g
+    network_mode: service:gateway-under-test
+    depends_on:
+      browser-preview-ingress:
+        condition: service_healthy
+    environment:
+      CI: ${CI:-}
+      E2E_CONTAINERIZED: "1"
+      E2E_DATABASE_PREPARED: "1"
+      E2E_SOURCE_DIR: /workspace/source
+      E2E_CODEX_HOME: /codex-auth
+      E2E_REMOTE_HOST: ssh-target
+      E2E_LEGACY_NODE_REMOTE_HOST: ssh-target-legacy-node
+      E2E_LEGACY_CODEX_REMOTE_HOST: ssh-target-legacy-codex
+      E2E_REMOTE_PORT: "22"
+      E2E_REMOTE_USERNAME: codex
+      E2E_REMOTE_PASSWORD: codex
+      E2E_REMOTE_PROJECT_PATH: /workspace/codex-gateway
+      E2E_CODEX_CLI_VERSION: ${E2E_CODEX_CLI_VERSION:-0.140.0}
+      E2E_CODEX_MODEL: ${E2E_CODEX_MODEL:-gpt-5.6-luna}
+      E2E_BARK_SERVER_URL: http://bark-target:8080
+      E2E_BARK_REQUEST_LOG: /bark-requests/requests.jsonl
+      PLAYWRIGHT_BASE_URL: http://codex.127.0.0.1.nip.io:3100
+      HOME: /home/pwuser
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    volumes:
+      - ${E2E_CODEX_HOME:-${HOME}/.codex}:/codex-auth:ro
+      - ../../test-results:/workspace/codex-gateway/test-results
+      - e2e-data:/workspace/codex-gateway/.data-e2e
+      - bark-requests:/bark-requests
+      - runner-home:/home/pwuser
+    working_dir: /workspace/codex-gateway
+
+volumes:
+  bark-requests:
+  build-output:
+  e2e-data:
+  runner-home:
+  e2e-nuxt-vite-cache:

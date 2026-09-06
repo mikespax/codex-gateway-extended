@@ -1,0 +1,15 @@
+<script setup lang="ts">
+import type { HTMLAttributes } from "vue";
+import { AlertDescription } from "@codex-gateway/ui/alert";
+import { cn } from "@codex-gateway/ui/utils";
+
+const props = defineProps<{
+  class?: HTMLAttributes["class"];
+}>();
+</script>
+
+<template>
+  <AlertDescription :class="cn('inline', props.class)" v-bind="$attrs">
+    <slot />
+  </AlertDescription>
+</template>

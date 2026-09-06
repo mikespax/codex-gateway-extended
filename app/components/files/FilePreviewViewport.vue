@@ -1,0 +1,88 @@
+<script setup lang="ts">
+import { FileWarningIcon, Loader2Icon } from "@lucide/vue";
+import { computed } from "vue";
+import type { FilePreviewDocument } from "~~/shared/types";
+import { Button } from "@codex-gateway/ui/button";
+import FileTextEditor from "@/components/files/FileTextEditor.vue";
+import { useTerminalTheme } from "@/composables/terminal/useTerminalTheme";
+import { useGatewayFileWorkspaceStore } from "@/stores/file-workspace";
+
+const props = defineProps<{
+  document: FilePreviewDocument;
+}>();
+const emit = defineEmits<{ conflict: [] }>();
+
+const { t, locale } = useI18n();
+const fileWorkspace = useGatewayFileWorkspaceStore();
+const { isDark } = useTerminalTheme();
+const file = computed(() => fileWorkspace.fileForDocument(props.document.key));
+const viewerTheme = computed(() => (isDark.value ? "dark" : "light"));
+const viewerLocale = computed(() => (locale.value === "en" ? "en-US" : "zh-CN"));
+</script>
+
+<template>
+  <div class="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
+    <div
+      v-if="document.loading"
+      class="flex flex-1 items-center justify-center text-sm text-ink-muted"
+    >
+      <Loader2Icon class="mr-2 size-4 animate-spin" />
+      {{ t("app.loadingFilePreview") }}
+    </div>
+    <div
+      v-else-if="document.error"
+      class="m-3 flex flex-col gap-3 rounded-xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive"
+    >
+      <div class="flex items-start gap-2">
+        <FileWarningIcon class="mt-0.5 size-4 shrink-0" />
+        <div class="min-w-0">
+          <div class="font-medium">{{ t("app.filePreviewFailed") }}</div>
+          <div class="mt-1 whitespace-pre-wrap break-words text-destructive/85">
+            {{ document.error }}
+          </div>
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        class="self-start"
+        @click="fileWorkspace.reloadDocument(document)"
+      >
+        {{ t("app.retry") }}
+      </Button>
+    </div>
+    <FileTextEditor
+      v-else-if="document.previewKind === 'text'"
+      :key="document.key"
+      :document="document"
+      @conflict="emit('conflict')"
+    />
+    <div
+      v-else-if="document.previewKind === 'binary'"
+      class="flex min-h-0 flex-1 items-center justify-center bg-canvas p-6"
+    >
+      <div
+        class="max-w-lg rounded-xl border border-hairline bg-surface px-5 py-4 text-center shadow-sm"
+      >
+        <FileWarningIcon class="mx-auto size-7 text-ink-faint" />
+        <div class="mt-3 text-sm font-semibold text-ink">{{ t("app.binaryFileTitle") }}</div>
+        <div class="mt-1.5 text-sm leading-6 text-ink-muted">
+          {{ t("app.binaryFileDescription") }}
+        </div>
+      </div>
+    </div>
+    <!-- Nuxt prefixes nested auto-imports with `Files`. Keep the Lazy name explicit: the old
+         unprefixed tag became a silent custom element, while a static import pulled the Office
+         dependency graph into Nitro SSR and exceeded the constrained production build heap. -->
+    <LazyFilesOpenFileViewerVendor
+      v-else-if="document.previewKind === 'document' && file"
+      :key="document.updatedAt"
+      :file="file"
+      :file-name="document.title"
+      :mime-type="document.contentType"
+      :toolbar="{ download: true, fullscreen: true, print: true, search: true }"
+      :theme="viewerTheme"
+      :locale="viewerLocale"
+    />
+  </div>
+</template>

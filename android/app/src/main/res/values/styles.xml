@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:colorAccent">#96ea43</item>
+        <item name="android:navigationBarColor">#101510</item>
+        <item name="android:statusBarColor">#101510</item>
+    </style>
+</resources>

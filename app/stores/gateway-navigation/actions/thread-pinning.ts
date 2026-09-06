@@ -1,0 +1,150 @@
+import type { GatewayThread, PinnedThreadRecord } from "~~/shared/types";
+import { gatewayApi } from "@/utils/gateway-api";
+import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
+import { useGatewayConfigStore } from "@/stores/gateway-config";
+import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
+import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
+import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
+import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
+import { pinnedKey, sortThreads, titleForThread } from "@/stores/gateway/thread-utils/identity";
+import { captureSessionEpoch } from "@/utils/session-epoch";
+
+export function createThreadPinningActions() {
+  return {
+    async setThreadPinned(threadId: string, pinned: boolean) {
+      const gateway = useGatewayConfigStore();
+      const catalog = useGatewayCatalogStore();
+      const navigation = useGatewayNavigationStore();
+      if (navigation.selectedHostId === null) return;
+      const project = catalog.projects.find(
+        (candidate) => candidate.id === navigation.selectedProjectId,
+      );
+      const thread = navigation.threads.find((candidate) => String(candidate.id) === threadId);
+      const key = pinnedKey(navigation.selectedHostId, threadId);
+      const previousPinnedThread = gateway.gatewayConfig.pinnedThreads.find(
+        (item) => pinnedKey(item.hostId, item.threadId) === key,
+      );
+      gateway.gatewayConfig.pinnedThreads = gateway.gatewayConfig.pinnedThreads.filter(
+        (item) => pinnedKey(item.hostId, item.threadId) !== key,
+      );
+      const nextPinnedThread: PinnedThreadRecord = previousPinnedThread ?? {
+        hostId: navigation.selectedHostId,
+        projectId: navigation.selectedProjectId,
+        threadId,
+        title: titleForThread(thread),
+        subtitle: project?.remotePath ?? null,
+        projectName: project?.name ?? null,
+        updatedAt: Number(thread?.recencyAt ?? thread?.updatedAt ?? Date.now() / 1000),
+      };
+      if (pinned) gateway.gatewayConfig.pinnedThreads.unshift(nextPinnedThread);
+      navigation.threads = sortThreads(
+        navigation.threads.map((item) =>
+          String(item.id) === threadId ? { ...item, pinned } : item,
+        ),
+      );
+      await gateway.setPinnedThread(nextPinnedThread, pinned);
+    },
+
+    async setPinnedThread(thread: PinnedThreadRecord, pinned: boolean) {
+      const gateway = useGatewayConfigStore();
+      const navigation = useGatewayNavigationStore();
+      const key = pinnedKey(thread.hostId, thread.threadId);
+      gateway.gatewayConfig.pinnedThreads = gateway.gatewayConfig.pinnedThreads.filter(
+        (item) => pinnedKey(item.hostId, item.threadId) !== key,
+      );
+      if (pinned) gateway.gatewayConfig.pinnedThreads.unshift(thread);
+      if (thread.hostId === navigation.selectedHostId) {
+        navigation.threads = sortThreads(
+          navigation.threads.map((candidate) =>
+            String(candidate.id) === thread.threadId ? { ...candidate, pinned } : candidate,
+          ),
+        );
+      }
+      await gateway.setPinnedThread(thread, pinned);
+    },
+
+    async openPinnedThread(thread: PinnedThreadRecord) {
+      const sessionIsCurrent = captureSessionEpoch();
+      const navigation = useGatewayNavigationStore();
+      const openingKey = pinnedKey(thread.hostId, thread.threadId);
+      navigation.openingPinnedThreadKey = openingKey;
+      try {
+        await useGatewayThreadViewStore().openThread(thread.threadId, {
+          hostId: thread.hostId,
+          projectId: thread.projectId,
+        });
+      } finally {
+        if (sessionIsCurrent() && navigation.openingPinnedThreadKey === openingKey) {
+          navigation.openingPinnedThreadKey = null;
+        }
+      }
+    },
+
+    upsertPinnedMetadataFromThread(thread: GatewayThread) {
+      const gateway = useGatewayConfigStore();
+      const catalog = useGatewayCatalogStore();
+      const navigation = useGatewayNavigationStore();
+      if (navigation.selectedHostId === null) return;
+      const key = pinnedKey(navigation.selectedHostId, thread.id);
+      const index = gateway.gatewayConfig.pinnedThreads.findIndex(
+        (item) => pinnedKey(item.hostId, item.threadId) === key,
+      );
+      const pinnedThread = gateway.gatewayConfig.pinnedThreads[index];
+      if (!pinnedThread) return;
+      const project = catalog.projects.find(
+        (candidate) => candidate.id === navigation.selectedProjectId,
+      );
+      gateway.gatewayConfig.pinnedThreads[index] = {
+        ...pinnedThread,
+        title: titleForThread(thread),
+        projectName: project?.name ?? pinnedThread.projectName,
+        subtitle: project?.remotePath ?? pinnedThread.subtitle,
+        updatedAt: Number(
+          thread.recencyAt ?? thread.updatedAt ?? pinnedThread.updatedAt ?? Date.now() / 1000,
+        ),
+      };
+      const updatedPinnedThread = gateway.gatewayConfig.pinnedThreads[index];
+      if (updatedPinnedThread === undefined) return;
+      void gateway.setPinnedThread(updatedPinnedThread, true).catch((error: unknown) => {
+        const bootstrap = useGatewayBootstrapStore();
+        bootstrap.setError(
+          error instanceof Error ? error.message : bootstrap.t("app.configSyncFailed"),
+        );
+      });
+    },
+
+    async renameThread(hostId: number, threadId: string, name: string) {
+      const sessionIsCurrent = captureSessionEpoch();
+      const gateway = useGatewayConfigStore();
+      const navigation = useGatewayNavigationStore();
+      const views = useGatewayThreadViewStore();
+      await gatewayApi("/api/threads/rename", { method: "POST", body: { hostId, threadId, name } });
+      if (!sessionIsCurrent()) return;
+      if (hostId === navigation.selectedHostId) {
+        navigation.threads = navigation.threads.map((thread) =>
+          String(thread.id) === threadId ? { ...thread, name } : thread,
+        );
+      }
+      const key = pinnedKey(hostId, threadId);
+      gateway.gatewayConfig.pinnedThreads = gateway.gatewayConfig.pinnedThreads.map((thread) =>
+        pinnedKey(thread.hostId, thread.threadId) === key ? { ...thread, title: name } : thread,
+      );
+      useGatewayThreadActivityStore().updateTitle(hostId, threadId, name);
+      const renamedPinnedThread = gateway.gatewayConfig.pinnedThreads.find(
+        (thread) => pinnedKey(thread.hostId, thread.threadId) === key,
+      );
+      if (renamedPinnedThread !== undefined) {
+        await gateway.setPinnedThread(renamedPinnedThread, true);
+      }
+      if (
+        hostId === navigation.selectedHostId &&
+        navigation.selectedThreadId === threadId &&
+        views.currentThread &&
+        typeof views.currentThread === "object"
+      ) {
+        views.currentThread = { ...views.currentThread, name };
+      }
+      if (hostId === navigation.selectedHostId) await navigation.listThreads();
+    },
+  };
+}

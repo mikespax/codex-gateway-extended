@@ -1,0 +1,4 @@
+/* Tailwind ignores workspace dependencies by default. The package owns this source registration
+   so consumers import a stable package path instead of knowing the monorepo's directory layout. */
+@import "vue-sonner/style.css";
+@source "./dist";

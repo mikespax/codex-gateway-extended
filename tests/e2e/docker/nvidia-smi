@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+case " $* " in
+  *" --query-gpu="*)
+    printf '%s\n' '0, GPU-e2e-0000, E2E Training GPU, 73, 7168, 24576, 61'
+    ;;
+  *" --query-compute-apps="*)
+    pid="$(pgrep -o -u trainer -f /usr/local/bin/e2e-gpu-training || true)"
+    if [ -n "$pid" ]; then
+      printf 'GPU-e2e-0000, %s, 6144\n' "$pid"
+    fi
+    ;;
+  *)
+    exit 1
+    ;;
+esac

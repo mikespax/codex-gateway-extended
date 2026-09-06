@@ -1,0 +1,117 @@
+import { nextTick, onBeforeUnmount } from "vue";
+import { createStickToBottomState, type ThresholdSource } from "./stick-to-bottom-state";
+import { createViewportInputIntent } from "./viewport-input-intent";
+import { nextAnimationFrame } from "@/utils/browser-scheduling";
+
+type StickToBottomOptions = {
+  threshold?: ThresholdSource;
+  getViewport: () => HTMLElement | null;
+  measure?: () => void;
+  onViewportScroll?: (viewport: HTMLElement) => void;
+  scrollToBottom: (viewport: HTMLElement) => void;
+};
+
+export function useStickToBottom(options: StickToBottomOptions) {
+  const state = createStickToBottomState({
+    threshold: options.threshold,
+    getViewport: options.getViewport,
+    onViewportScroll: options.onViewportScroll,
+  });
+  const inputIntent = createViewportInputIntent({
+    getViewport: options.getViewport,
+    onBound: state.prepareViewport,
+    onKeydown: state.handleKeydown,
+    onPointerDown: state.handlePointerDown,
+    onScroll: state.handleScroll,
+    onTouchMove: state.handleTouchMove,
+    onTouchStart: state.handleTouchStart,
+    onWheel: state.handleWheel,
+  });
+
+  async function scrollToBottom() {
+    const version = state.currentVersion();
+    await nextTick();
+    if (version !== state.currentVersion() || !state.followLatest.value) {
+      return;
+    }
+    options.measure?.();
+    await nextAnimationFrame();
+    if (version !== state.currentVersion() || !state.followLatest.value) {
+      return;
+    }
+    options.measure?.();
+    const viewport = options.getViewport();
+    if (viewport) {
+      options.scrollToBottom(viewport);
+    }
+    state.lockToBottom();
+    state.initialBottomAligned.value = true;
+  }
+
+  function followContentChange() {
+    bindInputListeners();
+    if (!state.followLatest.value) {
+      return;
+    }
+    options.measure?.();
+    const viewport = options.getViewport();
+    if (viewport) {
+      options.scrollToBottom(viewport);
+    }
+  }
+
+  function reset() {
+    state.reset();
+    void scrollToBottom();
+  }
+
+  function bindInputListeners() {
+    inputIntent.bind();
+  }
+
+  function stickIfFollowing() {
+    bindInputListeners();
+    if (state.followLatest.value) {
+      void scrollToBottom();
+    }
+  }
+
+  async function settleAndStick(frameCount = 4) {
+    // Some containers first mount at height 0 while wrappers such as
+    // CollapsibleContent and syntax highlighters settle. A few post-mount
+    // frames prevent the initial bottom alignment from using stale geometry.
+    for (let index = 0; index < frameCount; index += 1) {
+      await nextAnimationFrame();
+      bindInputListeners();
+      options.measure?.();
+      if (state.followLatest.value) {
+        const viewport = options.getViewport();
+        if (viewport) {
+          options.scrollToBottom(viewport);
+        }
+      }
+    }
+    if (state.followLatest.value) {
+      state.initialBottomAligned.value = true;
+    }
+  }
+
+  function cleanup() {
+    inputIntent.unbind();
+  }
+
+  onBeforeUnmount(cleanup);
+
+  return {
+    bindInputListeners,
+    followLatest: state.followLatest,
+    followContentChange,
+    initialBottomAligned: state.initialBottomAligned,
+    isNearBottom: state.isNearBottom,
+    reset,
+    settleAndStick,
+    scrollToBottom,
+    stickIfFollowing,
+    userDetached: state.userDetached,
+  };
+}
