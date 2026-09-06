@@ -97,6 +97,18 @@ export function providerRouterStatus(now = new Date()): ProviderRouterStatus {
 export function providerStartParameters(model: string | null | undefined, now = new Date()) {
   const status = providerRouterStatus(now);
   const runtime = getProviderRouterState();
+  // Hybrid thread/start only creates the logical Codex identity; it does not run inference. Keep
+  // that materialization on the stock OpenAI provider so a host that has not provisioned a
+  // DeepSeek key (or whose long-lived app-server has not reloaded the provider table) can still
+  // create a chat. The first turn applies the actual hybrid decision through thread/resume and
+  // the guarded fallback path. DeepSeek-only remains strict and starts on DeepSeek directly.
+  if (status.mode === "hybrid") {
+    return {
+      modelProvider: "openai" as const,
+      model:
+        model !== null && model !== undefined && !model.startsWith("deepseek") ? model : undefined,
+    };
+  }
   const transport =
     status.transport === "openrouter" && runtime.openrouter !== "available"
       ? "deepseek"
