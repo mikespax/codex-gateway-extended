@@ -194,6 +194,21 @@ Core rules:
 
 ## Quick Start
 
+## Provider Routing
+
+Keep existing Codex conversations while selecting one of the three supported policies:
+
+```text
+codex-provider openai
+codex-provider hybrid
+codex-provider deepseek
+codex-provider status
+```
+
+The Settings panel provides the same selector and an optional OpenRouter-credits-first transport
+toggle. See [docs/smart-provider-routing.md](docs/smart-provider-routing.md) for the routing,
+vision, quota, continuity, and rollback details.
+
 Prerequisites: Docker with Compose, Git, and network access from Gateway to the SSH hosts you want to manage.
 
 ```bash

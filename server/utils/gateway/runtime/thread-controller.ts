@@ -12,6 +12,7 @@ import { threadRuntimeEvents } from "./thread-runtime-events";
 import type { ThreadOpenSnapshot } from "./types";
 import { createThreadNotificationResolvers } from "./notification-rpc-resolvers";
 import { GATEWAY_APPROVAL_POLICY } from "../protocol/thread-payload";
+import type { EffectiveProvider } from "../provider-router/types";
 
 export class ThreadController {
   readonly client: CodexRpcClient;
@@ -22,6 +23,7 @@ export class ThreadController {
   private activeMainThread = false;
   private subAgentThread = false;
   private fullAccessApplied = false;
+  private freshThread = false;
 
   constructor(
     readonly host: HostRecord,
@@ -108,6 +110,7 @@ export class ThreadController {
       // attached; it has no ThreadResumeResponse. Existing threads must still resume once when
       // their materialized snapshot does not yet contain model/effort. This is the app-server's
       // authoritative settings read, not a presentation fallback.
+      if (this.freshThread && this.subscribed && this.getOpenSnapshot() === null) return;
       if (this.subscribed && this.getOpenSnapshot()?.threadSettings != null) return;
       // Fresh threads never enter this branch: ControllerRegistry keeps thread/start's implicit
       // subscription under a bootstrap owner until turn/started. Calling thread/resume before that
@@ -138,6 +141,7 @@ export class ThreadController {
   adoptExistingSubscription() {
     if (this.closed) throw new Error("Thread controller is closed");
     this.subscribed = true;
+    this.freshThread = true;
   }
 
   shouldTransferSubscriptionToMonitor() {
@@ -146,6 +150,76 @@ export class ThreadController {
 
   markActiveMainThread() {
     this.activeMainThread = !this.subAgentThread;
+  }
+
+  isActiveMainThread() {
+    return this.activeMainThread;
+  }
+
+  isFreshThread() {
+    return this.freshThread && this.getOpenSnapshot() === null;
+  }
+
+  /**
+   * Switch an idle loaded thread through the official resume override. This intentionally refuses
+   * to interrupt an active turn: provider changes must never replay a partially streamed turn or
+   * duplicate tool side effects.
+   */
+  async ensureProvider(provider: EffectiveProvider | "openrouter", model: string | null) {
+    await this.ensureConnected();
+    return this.enqueue(async () => {
+      const snapshot = this.getOpenSnapshot();
+      // thread/start has already selected the provider for a brand-new identity. There is no
+      // rollout for thread/resume to load yet; the first turn materializes it under that choice.
+      if (snapshot === null && this.subscribed && this.freshThread) {
+        return { provider, model, changed: false };
+      }
+      const currentProvider = snapshot?.thread.modelProvider ?? null;
+      const currentModel = snapshot?.thread.model ?? snapshot?.threadSettings?.model ?? null;
+      if (currentProvider === provider && (model === null || currentModel === model)) {
+        return { provider, model, changed: false };
+      }
+      if (this.activeMainThread || snapshot?.thread.status.type === "active") {
+        throw new Error(
+          "Provider change is waiting for the current turn to finish; retry after the thread is idle.",
+        );
+      }
+      if (this.subscribed) {
+        await this.client.request("thread/unsubscribe", { threadId: this.threadId }, 15_000);
+        this.subscribed = false;
+      }
+      const params: Record<string, unknown> = {
+        threadId: this.threadId,
+        excludeTurns: true,
+        modelProvider: provider,
+      };
+      if (model !== null && model !== "") params.model = model;
+      const resumed = await this.requestResume(params);
+      if (resumed.thread.modelProvider !== provider) {
+        throw new Error(
+          `Codex app-server resumed provider ${resumed.thread.modelProvider}, expected ${provider}`,
+        );
+      }
+      if (snapshot !== null) {
+        // Some app-server versions expose the resumed model only in the resume envelope rather
+        // than on the nested thread DTO. Preserve that authoritative value so the next turn does
+        // not resume the same thread again merely because its cached settings still say "unknown".
+        this.setOpenSnapshot({
+          ...snapshot,
+          thread: { ...resumed.thread, model: resumed.model },
+          threadSettings: {
+            ...(snapshot.threadSettings ?? {
+              model: null,
+              effort: null,
+              serviceTier: null,
+              approvalPolicy: GATEWAY_APPROVAL_POLICY,
+            }),
+            model: resumed.model,
+          },
+        });
+      }
+      return { provider, model: resumed.model, changed: true };
+    });
   }
 
   setOpenSnapshot(snapshot: ThreadOpenSnapshot) {
@@ -231,6 +305,7 @@ export class ThreadController {
       parseThreadResumeResult,
     );
     this.subscribed = true;
+    this.freshThread = false;
     if (resumed.approvalPolicy === GATEWAY_APPROVAL_POLICY) {
       this.fullAccessApplied = true;
     } else {

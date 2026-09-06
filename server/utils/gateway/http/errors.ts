@@ -1,6 +1,6 @@
 import { defineEventHandler, getRequestURL, setResponseStatus, type H3Event } from "h3";
 import type { GatewayConfig, HostRecord } from "~~/shared/types";
-import { normalizeNotificationSettings } from "~~/shared/config";
+import { normalizeNotificationSettings, normalizeProviderRouting } from "~~/shared/config";
 import {
   isStaleThreadCursorErrorLike,
   STALE_THREAD_CURSOR_ERROR_CODE,
@@ -17,6 +17,7 @@ import {
 } from "../state/memory";
 import { recordFromUnknown } from "~~/shared/utils/records";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
+import { getProviderRouterState } from "../provider-router/state";
 
 export class CodexRpcError extends Error {
   constructor(
@@ -109,6 +110,9 @@ export function runtimeConfigFromMemory(): GatewayConfig {
     projects: projectStore.listConfigured(),
     pinnedThreads: state.pinnedThreads,
     notifications: normalizeNotificationSettings(state.notifications),
+    providerRouting: normalizeProviderRouting(
+      getProviderRouterState().settings ?? state.providerRouting,
+    ),
   };
 }
 
