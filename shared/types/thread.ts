@@ -280,6 +280,8 @@ export interface AppServerThread {
   projectId: string | null;
   historyMode: "legacy" | "paginated";
   modelProvider: string;
+  model?: string | null;
+  reasoningEffort?: string | null;
   createdAt: number;
   updatedAt: number;
   recencyAt: number | null;

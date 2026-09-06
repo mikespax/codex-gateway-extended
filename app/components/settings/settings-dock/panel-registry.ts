@@ -22,6 +22,10 @@ export const settingsPanelRegistry = {
     component: "SettingsDockNotificationPanel",
     titleKey: "app.notificationSettings",
   },
+  providerRouting: {
+    component: "SettingsDockProviderRoutingPanel",
+    titleKey: "app.providerRouting",
+  },
 } satisfies Record<SettingsPanelKind, SettingsPanelPolicy>;
 
 export const settingsPanelKinds = [
@@ -29,4 +33,5 @@ export const settingsPanelKinds = [
   "config",
   "hosts",
   "notifications",
+  "providerRouting",
 ] as const satisfies readonly SettingsPanelKind[];

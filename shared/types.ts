@@ -87,6 +87,13 @@ export type {
   PinnedThreadRecord,
 } from "./types/config";
 export type {
+  ProviderAvailability,
+  ProviderQuotaState,
+  ProviderRoutingMode,
+  ProviderRoutingSettings,
+  ProviderRoutingStatus,
+} from "./types/provider-routing";
+export type {
   FilePreviewDocument,
   RemoteFileConflict,
   RemoteFileWriteResult,
