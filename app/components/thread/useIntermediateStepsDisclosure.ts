@@ -10,10 +10,11 @@ interface IntermediateDisclosureTurn {
   hasPendingApproval: boolean;
 }
 
+const TERMINAL_TURN_STATUSES = new Set(["completed", "failed", "interrupted"]);
+
 export function useIntermediateStepsDisclosure(input: {
   turns: ComputedRef<IntermediateDisclosureTurn[]>;
   threadIsRunning: ComputedRef<boolean>;
-  autoCollapseIntermediate: ComputedRef<boolean>;
 }) {
   // Disclosure state belongs to the timeline, not to virtual row components. Rows are destroyed
   // offscreen, so keeping this small per-turn map here preserves explicit user choices without
@@ -24,7 +25,6 @@ export function useIntermediateStepsDisclosure(input: {
   watch(
     () => [
       input.threadIsRunning.value,
-      input.autoCollapseIntermediate.value,
       ...input.turns.value.flatMap((turn) => [
         turn.id,
         statusValue(turn.status),
@@ -49,19 +49,15 @@ export function useIntermediateStepsDisclosure(input: {
           openByTurnId.set(turn.id, true);
           continue;
         }
-        // Keep live intermediate work collapsed by default so routine commands and reasoning do
-        // not flood the conversation. The working header remains visible, and an explicit click
-        // can still open the trace for inspection. Preserve that user choice while the turn
-        // continues streaming, including a reader deliberately opening or closing noisy work.
-        if (input.threadIsRunning.value && turn.turnIsActive) {
-          if (!touchedByUser.has(turn.id)) openByTurnId.set(turn.id, false);
+        // Active turns open as soon as their first intermediate item arrives. Once the turn has a
+        // terminal status, collapse it automatically so a completed transcript stays compact.
+        // Preserve an explicit open/closed choice across both transitions, including a reader who
+        // deliberately keeps a completed trace open for inspection.
+        if (turn.turnIsActive || !TERMINAL_TURN_STATUSES.has(statusValue(turn.status) ?? "")) {
+          if (!touchedByUser.has(turn.id)) openByTurnId.set(turn.id, true);
           continue;
         }
-        if (input.autoCollapseIntermediate.value && !touchedByUser.has(turn.id)) {
-          openByTurnId.set(turn.id, false);
-        } else if (!openByTurnId.has(turn.id)) {
-          openByTurnId.set(turn.id, false);
-        }
+        if (!touchedByUser.has(turn.id)) openByTurnId.set(turn.id, false);
       }
     },
     { immediate: true },

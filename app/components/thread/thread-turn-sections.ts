@@ -56,8 +56,10 @@ export function itemKey(item: ThreadTimelineItem, section: string, index: number
   return typeof id === "string" && id !== "" ? id : `${section}-${index}-${item.type}`;
 }
 
-export function statusValue(status: unknown) {
-  return typeof status === "string" ? status : recordFromUnknown(status)?.type;
+export function statusValue(status: unknown): string | null {
+  if (typeof status === "string") return status;
+  const type = recordFromUnknown(status)?.type;
+  return typeof type === "string" ? type : null;
 }
 
 export function itemStatusSignature(items: ThreadTimelineItem[]) {

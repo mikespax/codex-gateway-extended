@@ -5,6 +5,7 @@ import {
   isThreadStoragePathInCodexSessions,
   parseThreadStorageScanOutput,
   ThreadStorageScanner,
+  THREAD_STORAGE_CACHE_TTL_MS,
   THREAD_STORAGE_SCAN_TIMEOUT_MS,
 } from "../../server/utils/gateway/infra/codex/thread-storage";
 import {
@@ -59,20 +60,32 @@ void test("thread storage output ignores malformed or out-of-range rows", () => 
   );
 });
 
-void test("thread storage scan command scopes rollout and attachments to Codex roots", () => {
+void test("thread storage scan command scopes rollout paths to Codex roots", () => {
   const command = buildThreadStorageScanCommand([
     { id: "thread-a", path: "/home/codex/.codex/sessions/a.jsonl" },
   ]);
   assert.match(command, /sessions_root/);
   assert.match(command, /archived_root/);
-  assert.match(command, /attachment_root/);
   assert.match(command, /inside_root/);
-  assert.match(command, /grep -aoE/);
-  assert.match(command, /sort -u/);
+  // The scanner must only stat rollout paths. Regex extraction over JSONL payloads can consume a
+  // whole CPU core on a single large line and leaves an orphaned remote process when SSH times out.
+  assert.doesNotMatch(command, /grep/);
+  assert.doesNotMatch(command, /attachment_root/);
   assert.doesNotMatch(command, /du -sk.*cwd/);
 });
 
-void test("thread storage scanner performs one bulk scan and caches results for one minute", async () => {
+void test("thread storage scanner reports uncached resolvable paths", () => {
+  const scanner = new ThreadStorageScanner({
+    exec: async () => ({ code: 0, stdout: "", stderr: "" }),
+  });
+  assert.equal(
+    scanner.needsRefresh(host, [{ id: "a", path: "/home/codex/.codex/sessions/a.jsonl" }]),
+    true,
+  );
+  assert.equal(scanner.needsRefresh(host, [{ id: "missing", path: null }]), false);
+});
+
+void test("thread storage scanner performs one bulk scan and caches results for six hours", async () => {
   let now = 10_000;
   let calls = 0;
   let timeout: number | undefined;
@@ -107,9 +120,31 @@ void test("thread storage scanner performs one bulk scan and caches results for 
   );
   assert.equal(calls, 1);
   assert.equal(timeout, THREAD_STORAGE_SCAN_TIMEOUT_MS);
-  now += 60_001;
+  now += THREAD_STORAGE_CACHE_TTL_MS + 1;
   await scanner.scan(scanHost, threads);
   assert.equal(calls, 2);
+});
+
+void test("thread storage scanner keeps stale values visible while a refresh fails", async () => {
+  let now = 10_000;
+  let calls = 0;
+  const scanner = new ThreadStorageScanner(
+    {
+      exec: async () => {
+        calls += 1;
+        if (calls === 1) return { code: 0, stdout: "0\t123\n", stderr: "" };
+        throw new Error("offline");
+      },
+    },
+    () => now,
+  );
+  const thread = { id: "a", path: "/home/codex/.codex/sessions/a.jsonl" };
+  await scanner.scan(host, [thread]);
+  now += THREAD_STORAGE_CACHE_TTL_MS + 1;
+  assert.equal(scanner.needsRefresh(host, [thread]), true);
+  assert.deepEqual([...scanner.cached(host, [thread])], [["a", 123]]);
+  await scanner.scan(host, [thread]);
+  assert.deepEqual([...scanner.cached(host, [thread])], [["a", 123]]);
 });
 
 void test("unresolved thread paths return neutral size data without a remote scan", async () => {

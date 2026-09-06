@@ -55,7 +55,7 @@ fi
 export function codexRemoteAppServerStartPayload() {
   return codexRemotePayload(`
 set -eu
-${ensureGatewayCodexConfigFeatureSnippet()}
+${ensureGatewayCodexConfigProviderSnippet()}
 "$CODEX_BIN" app-server --listen unix://
 `);
 }
@@ -64,7 +64,7 @@ export function codexRemoteAppServerProxyPayload() {
   return codexRemotePayload(`
 set -eu
 socket="\${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
-${ensureGatewayCodexConfigFeatureSnippet()}
+${ensureGatewayCodexConfigProviderSnippet()}
 ${appServerSocketHasListenerSnippet()}
 if [ -S "$socket" ] && ! codex_gateway_socket_has_listener; then
   rm -f "$socket"
@@ -169,10 +169,41 @@ exit 1
 export function codexRemoteAppServerVerifyPayload() {
   return codexRemotePayload(`
 set -eu
-${ensureGatewayCodexConfigFeatureSnippet()}
+${ensureGatewayCodexConfigProviderSnippet()}
 "$CODEX_BIN" --version
 "$CODEX_BIN" app-server proxy --help >/dev/null
 `);
+}
+
+function ensureGatewayCodexConfigProviderSnippet() {
+  return `
+${ensureGatewayCodexConfigFeatureSnippet()}
+codex_home="\${CODEX_HOME:-$HOME/.codex}"
+config_file="$codex_home/config.toml"
+mkdir -p "$codex_home"
+touch "$config_file"
+if ! grep -q '^\\[model_providers.deepseek\\][[:space:]]*$' "$config_file"; then
+  cat >> "$config_file" <<'CODEX_GATEWAY_DEEPSEEK_PROVIDER'
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com"
+wire_api = "responses"
+env_key = "DEEPSEEK_API_KEY"
+CODEX_GATEWAY_DEEPSEEK_PROVIDER
+fi
+if ! grep -q '^\\[model_providers.openrouter\\][[:space:]]*$' "$config_file"; then
+  cat >> "$config_file" <<'CODEX_GATEWAY_OPENROUTER_PROVIDER'
+
+[model_providers.openrouter]
+name = "OpenRouter (DeepSeek transport)"
+base_url = "https://openrouter.ai/api/v1"
+wire_api = "responses"
+env_key = "OPENROUTER_API_KEY"
+CODEX_GATEWAY_OPENROUTER_PROVIDER
+fi
+true
+`;
 }
 
 export function remoteLoginShellCommand(payload: string) {
@@ -251,9 +282,11 @@ codex_gateway_socket_has_listener() {
     awk -v socket="$socket" '$NF == socket && $4 == "00010000" { found = 1 } END { exit found ? 0 : 1 }' /proc/net/unix
     return $?
   fi
-  if [ "$(uname -s 2>/dev/null || true)" = "Darwin" ] && command -v lsof >/dev/null 2>&1; then
-    lsof -nP -a -U -Fn -- "$socket" 2>/dev/null | grep -q '^p'
-    return $?
+  if [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]; then
+    # macOS lsof can block indefinitely while probing a busy Codex Unix socket. The proxy
+    # performs its own connection handshake, so a present socket is the only safe bounded
+    # preflight here; a stale socket will fail through the normal proxy retry path.
+    return 0
   fi
   return 0
 }

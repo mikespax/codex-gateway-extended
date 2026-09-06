@@ -1,3 +1,7 @@
-import { defaultGatewayConfig, normalizeNotificationSettings } from "~~/shared/config";
+import {
+  defaultGatewayConfig,
+  normalizeNotificationSettings,
+  normalizeProviderRouting,
+} from "~~/shared/config";
 
-export { defaultGatewayConfig, normalizeNotificationSettings };
+export { defaultGatewayConfig, normalizeNotificationSettings, normalizeProviderRouting };

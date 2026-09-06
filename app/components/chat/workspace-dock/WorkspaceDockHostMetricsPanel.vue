@@ -9,5 +9,5 @@ defineProps<{
 </script>
 
 <template>
-  <HostMetricsPanel :host-id="params.params.hostId" />
+  <HostMetricsPanel :host-id="params.params.hostId" all-hosts />
 </template>

@@ -296,7 +296,7 @@ test("recalls the latest request above active intermediate work", async ({ page 
   await expect(userMessage).toBeVisible();
   await expect(page.getByTestId("active-prompt-recall")).toHaveCount(0);
   await expect(intermediateToggle).toBeVisible();
-  await expect(intermediateToggle).toHaveAttribute("data-state", "closed");
+  await expect(intermediateToggle).toHaveAttribute("data-state", "open");
   await expect(page.getByTestId("intermediate-steps-working")).toBeVisible();
   await expect(page.getByTestId("stop-turn-button")).toBeHidden();
   await expect(page.getByTestId("send-turn-button")).toBeVisible();

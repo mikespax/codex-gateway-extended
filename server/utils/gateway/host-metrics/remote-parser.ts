@@ -227,7 +227,7 @@ function parseDisk(blockLines: string[], diskLines: string[]) {
   return { readBytes, writeBytes };
 }
 
-function parseFilesystems(lines: string[]): HostFilesystemMetrics[] {
+export function parseFilesystems(lines: string[]): HostFilesystemMetrics[] {
   const filesystems: HostFilesystemMetrics[] = [];
   for (const line of lines.slice(1)) {
     const fields = line.trim().split(/\s+/);
@@ -239,6 +239,7 @@ function parseFilesystems(lines: string[]): HostFilesystemMetrics[] {
     const availableBytes = Number(availableKiB) * BYTES_PER_KIBIBYTE;
     if (![totalBytes, usedBytes, availableBytes].every(Number.isFinite) || totalBytes <= 0)
       continue;
+    const reportedUsagePercent = Number.parseFloat((fields[5] ?? "").replace(/%$/, ""));
     filesystems.push({
       device: device!,
       filesystemType: filesystemType!,
@@ -246,7 +247,9 @@ function parseFilesystems(lines: string[]): HostFilesystemMetrics[] {
       totalBytes,
       usedBytes,
       availableBytes,
-      usagePercent: (usedBytes / totalBytes) * 100,
+      usagePercent: Number.isFinite(reportedUsagePercent)
+        ? reportedUsagePercent
+        : (usedBytes / totalBytes) * 100,
     });
   }
   return filesystems.sort((left, right) => left.mountPoint.localeCompare(right.mountPoint));

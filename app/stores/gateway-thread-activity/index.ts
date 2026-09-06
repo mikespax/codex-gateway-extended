@@ -118,6 +118,16 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     const key = pinnedKey(summary.hostId, summary.threadId);
     const existing = summariesByKey.value[key];
     const displayActivityAt = existing?.displayActivityAt ?? summary.updatedAt;
+    // Thread snapshots do not carry the advisory storage measurement.  Keep the last known
+    // value when a snapshot or realtime projection updates the rest of the summary, otherwise
+    // opening a chat briefly replaces its cached size with the placeholder value.  A null value
+    // is also provisional while the list endpoint's six-hour scan is pending, so it must not
+    // erase a previously measured size.
+    const threadBytes =
+      existing?.threadBytes !== undefined &&
+      (summary.threadBytes === null || summary.threadBytes === undefined)
+        ? existing.threadBytes
+        : summary.threadBytes;
     summariesByKey.value = {
       ...summariesByKey.value,
       [key]: {
@@ -132,6 +142,7 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
         parentThreadId: summary.parentThreadId ?? existing?.parentThreadId ?? null,
         agentNickname: summary.agentNickname ?? existing?.agentNickname ?? null,
         agentRole: summary.agentRole ?? existing?.agentRole ?? null,
+        threadBytes,
         // Classification is sticky because `thread/started` can contain agent metadata before a
         // later `thread/read` supplies parentThreadId.
         isSubAgent: summary.isSubAgent || existing?.isSubAgent === true,

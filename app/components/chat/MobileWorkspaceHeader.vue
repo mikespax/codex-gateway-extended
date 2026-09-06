@@ -3,6 +3,7 @@ import { MinusIcon, PlusIcon } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { Button } from "@codex-gateway/ui/button";
 import CodexUsageBadge from "@/components/chat/CodexUsageBadge.vue";
+import ProviderRouteBadge from "@/components/chat/ProviderRouteBadge.vue";
 import { useGatewayAppearanceStore } from "@/stores/gateway-appearance";
 
 defineProps<{
@@ -21,6 +22,7 @@ const { canDecreaseChatTextSize, canIncreaseChatTextSize } = storeToRefs(appeara
       <slot name="start" />
     </div>
     <div class="relative z-10 ml-auto flex shrink-0 items-center justify-end gap-1">
+      <ProviderRouteBadge />
       <CodexUsageBadge :host-id="hostId" />
       <Button
         data-testid="decrease-chat-text-size"

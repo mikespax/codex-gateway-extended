@@ -221,6 +221,10 @@ export const appServerThreadSchema = z
     projectId: z.string().nullable(),
     historyMode: z.enum(["legacy", "paginated"]),
     modelProvider: z.string(),
+    // Newer Codex app-servers advertise the thread's current model settings on
+    // thread/list records. Keep these optional for older persisted records.
+    model: z.string().nullable().optional(),
+    reasoningEffort: z.string().nullable().optional(),
     createdAt: z.number(),
     updatedAt: z.number(),
     recencyAt: z.number().nullable(),
@@ -396,6 +400,7 @@ const threadResumeResultSchema = z
   .object({
     thread: appServerThreadSchema,
     model: z.string().min(1),
+    modelProvider: z.string().min(1),
     reasoningEffort: z.string().nullable(),
     serviceTier: z.string().nullable().optional(),
     approvalPolicy: z.union([
