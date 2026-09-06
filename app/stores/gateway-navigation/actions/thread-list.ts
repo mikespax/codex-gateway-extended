@@ -16,6 +16,7 @@ import { captureSessionEpoch } from "@/utils/session-epoch";
 
 const THREAD_LIST_PAGE_LIMIT = 100;
 const MAX_THREAD_LIST_PAGES = 20;
+const THREAD_STORAGE_REFRESH_DELAYS_MS = [750, 1_500, 3_000, 6_000, 12_000] as const;
 
 /**
  * The app-server keeps older threads behind cursors.  The gateway sidebar has
@@ -45,6 +46,43 @@ async function listAllThreads(
 }
 
 export function createThreadListActions() {
+  const storageRefreshTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const storageRefreshAttempts = new Map<number, number>();
+
+  function cancelStorageRefresh(hostId: number) {
+    const timer = storageRefreshTimers.get(hostId);
+    if (timer !== undefined) clearTimeout(timer);
+    storageRefreshTimers.delete(hostId);
+    storageRefreshAttempts.delete(hostId);
+  }
+
+  function scheduleStorageRefresh(hostId: number, pending: boolean | undefined) {
+    if (pending !== true) {
+      cancelStorageRefresh(hostId);
+      return;
+    }
+    if (storageRefreshTimers.has(hostId)) return;
+    const attempt = storageRefreshAttempts.get(hostId) ?? 0;
+    const delay = THREAD_STORAGE_REFRESH_DELAYS_MS[attempt];
+    if (delay === undefined) return;
+    const timer = setTimeout(() => {
+      storageRefreshTimers.delete(hostId);
+      storageRefreshAttempts.set(hostId, attempt + 1);
+      const catalog = useGatewayCatalogStore();
+      const navigation = useGatewayNavigationStore();
+      if (!catalog.hosts.some((host) => host.id === hostId)) {
+        cancelStorageRefresh(hostId);
+        return;
+      }
+      // A selected host needs the navigation catalog refreshed as well as the activity summaries;
+      // an unselected host only needs its pinned/recent summaries updated.
+      const refresh =
+        navigation.selectedHostId === hostId ? navigation.listThreads() : loadHostOverview(hostId);
+      void refresh.catch(() => undefined);
+    }, delay);
+    storageRefreshTimers.set(hostId, timer);
+  }
+
   async function loadHostOverview(hostId: number) {
     const catalog = useGatewayCatalogStore();
     const sessionIsCurrent = captureSessionEpoch();
@@ -57,6 +95,7 @@ export function createThreadListActions() {
     applyProjectDirectoryAvailability(response);
     useGatewayThreadActivityStore().ingestGatewayThreads(response.data ?? [], catalog.projects);
     syncThreadStatusesFromList(hostId, response.data ?? []);
+    scheduleStorageRefresh(hostId, response.threadStoragePending);
     return true;
   }
 
@@ -113,6 +152,7 @@ export function createThreadListActions() {
         useGatewayThreadActivityStore().ingestGatewayThreads(response.data ?? [], catalog.projects);
         catalog.setHostConnectionStatus(hostId, "connected");
         syncThreadStatusesFromList(hostId, response.data ?? []);
+        scheduleStorageRefresh(hostId, response.threadStoragePending);
         // Sub-agent threads remain addressable by their explicit panel links, but they are not
         // top-level navigation entries. Filter once at the catalog boundary so every sidebar
         // projection cannot accidentally reintroduce them with a slightly different predicate.

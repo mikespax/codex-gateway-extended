@@ -68,6 +68,7 @@ export default defineGatewayEventHandler(async (event) => {
     query.searchTerm ?? null,
   );
   let threadsWithStorage = gatewayThreads;
+  const threadStoragePending = threadStorage.needsRefresh(host, gatewayThreads);
   const cachedSizes = threadStorage.cached(host, gatewayThreads);
   threadsWithStorage = gatewayThreads.map((thread) => ({
     ...thread,
@@ -80,6 +81,9 @@ export default defineGatewayEventHandler(async (event) => {
   return {
     ...page,
     data: threadsWithStorage,
+    // The first list response intentionally remains fast. The browser uses this hint to refresh
+    // once after the six-hour-bounded advisory scan fills the in-memory cache.
+    threadStoragePending,
     projects,
     projectDirectoryAvailability,
   };
