@@ -71,12 +71,70 @@ function setMode(state, mode) {
 }
 
 function printStatus(state) {
+  const now = new Date();
+  const period = pricingPeriod(now);
+  const route = chooseRoute(state, period);
+  const next = nextPricingTransition(now);
   console.log("Codex Gateway");
   console.log(`Mode:                ${label(state.settings.mode)}`);
+  console.log("Logical provider:    OpenAI");
+  console.log(`Effective provider:  ${route.provider === "openai" ? "OpenAI" : "DeepSeek"}`);
+  console.log(`Transport:           ${route.transport}`);
+  console.log(`Model:               ${route.model || "not applicable"}`);
+  console.log(`DeepSeek period:     ${period === "peak" ? "PEAK" : "OFF-PEAK"}`);
+  console.log(`Next change:         ${next.toISOString()}`);
   console.log(`Use OpenRouter first: ${state.settings.useOpenRouterCreditsFirst ? "on" : "off"}`);
   console.log(`OpenAI quota:         ${state.openaiQuota || "unknown"}`);
   console.log(`OpenRouter:           ${state.openrouter || "unknown"}`);
+  console.log("Direct DeepSeek:     configured (remote environment)");
   console.log(`State file:           ${statePath}`);
+}
+
+function chooseRoute(state, period) {
+  const useDeepSeek =
+    state.settings.mode === "deepseek" ||
+    (state.settings.mode === "hybrid" &&
+      (period === "off_peak" || state.openaiQuota === "exhausted"));
+  if (!useDeepSeek) return { provider: "openai", transport: "openai", model: null };
+  const useOpenRouter =
+    state.settings.useOpenRouterCreditsFirst &&
+    state.openrouter !== "exhausted" &&
+    state.openrouter !== "unavailable";
+  return useOpenRouter
+    ? {
+        provider: "deepseek",
+        transport: "openrouter",
+        model: state.openrouterModels?.text || "deepseek/deepseek-v4-pro",
+      }
+    : {
+        provider: "deepseek",
+        transport: "deepseek",
+        model: "deepseek-v4-pro",
+      };
+}
+
+function pricingPeriod(now) {
+  const day = now.getUTCDay();
+  if (day === 0 || day === 6) return "off_peak";
+  const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return (minutes >= 60 && minutes < 240) || (minutes >= 360 && minutes < 600)
+    ? "peak"
+    : "off_peak";
+}
+
+function nextPricingTransition(now) {
+  for (let dayOffset = 0; dayOffset <= 8; dayOffset += 1) {
+    const day = new Date(now.getTime());
+    day.setUTCDate(day.getUTCDate() + dayOffset);
+    day.setUTCHours(0, 0, 0, 0);
+    const weekday = day.getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    for (const minute of [60, 240, 360, 600]) {
+      const candidate = new Date(day.getTime() + minute * 60_000);
+      if (candidate.getTime() > now.getTime()) return candidate;
+    }
+  }
+  return new Date(now.getTime() + 24 * 60 * 60_000);
 }
 
 function label(mode) {

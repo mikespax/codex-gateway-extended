@@ -68,6 +68,12 @@ void test("only true allowance exhaustion poisons OpenAI quota state", () => {
     }).resetAt,
     "2026-09-07T00:00:00.000Z",
   );
+  assert.equal(
+    classifyOpenAiFailure({
+      rpcData: { code: "insufficient_quota", message: "subscription allowance exhausted" },
+    }).kind,
+    "quota_exhausted",
+  );
 });
 
 void test("portable history removes opaque reasoning and rejects broken tool pairs", () => {

@@ -23,15 +23,28 @@ export interface ClassifiedUpstreamFailure {
 export function classifyOpenAiFailure(error: unknown): ClassifiedUpstreamFailure {
   const record = asRecord(error);
   const errorMessage = error instanceof Error ? error.message : null;
-  const status = numberValue(record?.status ?? record?.statusCode ?? record?.httpStatus);
-  const code = stringValue(record?.code ?? record?.errorCode)?.toLowerCase() ?? "";
+  const nested = [record?.error, record?.data, record?.rpcData, record?.cause]
+    .map(asRecord)
+    .filter((value): value is Record<string, unknown> => value !== null);
+  const status = firstNumber([
+    record?.status,
+    record?.statusCode,
+    record?.httpStatus,
+    ...nested.flatMap((value) => [value.status, value.statusCode, value.httpStatus]),
+  ]);
+  const code =
+    firstString([
+      record?.code,
+      record?.errorCode,
+      ...nested.flatMap((value) => [value.code, value.errorCode, value.type]),
+    ])?.toLowerCase() ?? "";
   const message = [
     stringValue(record?.message),
     errorMessage,
-    stringValue(asRecord(record?.error)?.message),
-    stringValue(asRecord(record?.data)?.message),
+    ...nested.map((value) => stringValue(value.message)),
+    ...nested.map((value) => safeJson(value)),
   ]
-    .filter(Boolean)
+    .filter((value): value is string => Boolean(value))
     .join(" ")
     .toLowerCase();
 
@@ -114,6 +127,9 @@ export function classifyOpenAiFailure(error: unknown): ClassifiedUpstreamFailure
 
 function quotaResetAt(error: unknown) {
   const record = asRecord(error);
+  const nested = [record?.error, record?.data, record?.rpcData, record?.cause]
+    .map(asRecord)
+    .filter((value): value is Record<string, unknown> => value !== null);
   const candidates = [
     record?.quotaResetAt,
     record?.quota_reset_at,
@@ -127,6 +143,12 @@ function quotaResetAt(error: unknown) {
     asRecord(record?.data)?.quota_reset_at,
     asRecord(record?.data)?.resetAt,
     asRecord(record?.data)?.reset_at,
+    ...nested.flatMap((value) => [
+      value.quotaResetAt,
+      value.quota_reset_at,
+      value.resetAt,
+      value.reset_at,
+    ]),
   ];
   for (const candidate of candidates) {
     const parsed = parseResetTimestamp(candidate);
@@ -156,6 +178,23 @@ function stringValue(value: unknown) {
   return typeof value === "string" ? value : null;
 }
 
+function firstString(values: unknown[]) {
+  return values.map(stringValue).find((value): value is string => value !== null) ?? null;
+}
+
+function firstNumber(values: unknown[]) {
+  return values.map(numberValue).find((value): value is number => value !== undefined);
+}
+
 function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function safeJson(value: unknown) {
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === "string" ? serialized : null;
+  } catch {
+    return null;
+  }
 }
