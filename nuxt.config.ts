@@ -11,6 +11,15 @@ export default defineNuxtConfig({
   experimental: {
     checkOutdatedBuildInterval: 5 * 60_000,
     emitRouteChunkError: "automatic-immediate",
+    // This authenticated shell has hundreds of lazy chunks. Emitting a rel=prefetch tag for
+    // every chunk makes Chromium send speculative requests that a CDN may correctly reject
+    // with an edge-only 503. Load chunks on demand instead.
+    prefetchPreloadTags: false,
+    defaults: {
+      nuxtLink: {
+        prefetch: false,
+      },
+    },
     // Nuxt 4.5 reuses Vite's watcher instead of opening a second watcher tree.
     watcher: "builder",
   },
@@ -20,6 +29,11 @@ export default defineNuxtConfig({
     "/**": {
       headers: {
         "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+        // Cloudflare Speed Brain injects a broad document prefetch policy when the origin does
+        // not provide one. This app is an authenticated, stateful shell; speculative requests
+        // to hashed module assets are not useful and can surface edge-only 503s in Chromium.
+        // Point the browser at our explicit empty ruleset so the edge does not add its default.
+        "speculation-rules": "/speculationrules.json",
       },
     },
     "/_nuxt/**": {
@@ -39,6 +53,12 @@ export default defineNuxtConfig({
       headers: {
         "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
         "service-worker-allowed": "/",
+      },
+    },
+    "/speculationrules.json": {
+      headers: {
+        "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+        "content-type": "application/speculationrules+json",
       },
     },
   },
