@@ -253,6 +253,27 @@ function migrate(db: DatabaseSync) {
       PRIMARY KEY (user_id, account_scope_id, thread_id, turn_id)
     );
 
+    CREATE TABLE IF NOT EXISTS usage_historical_records (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      account_scope_id TEXT NOT NULL,
+      source TEXT NOT NULL CHECK (source IN ('ccusage_codex')),
+      source_record_id TEXT NOT NULL,
+      source_fingerprint TEXT NOT NULL,
+      source_hosts_json TEXT NOT NULL,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_write_input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
+      api_equivalent_cost_micros INTEGER,
+      pricing_version TEXT,
+      pricing_completeness TEXT NOT NULL CHECK (pricing_completeness IN ('complete', 'partial', 'unknown')),
+      observed_at INTEGER NOT NULL,
+      imported_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, account_scope_id, source, source_record_id)
+    );
+
     CREATE TABLE IF NOT EXISTS usage_quota_observations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -298,6 +319,8 @@ function migrate(db: DatabaseSync) {
       ON usage_turns(user_id, account_scope_id, host_id, thread_id, observed_at);
     CREATE INDEX IF NOT EXISTS idx_usage_turns_month
       ON usage_turns(user_id, observed_at, api_equivalent_cost_micros);
+    CREATE INDEX IF NOT EXISTS idx_usage_historical_period
+      ON usage_historical_records(user_id, account_scope_id, source, observed_at);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_turns_account_turn
       ON usage_turns(user_id, account_scope_id, thread_id, turn_id);
     CREATE INDEX IF NOT EXISTS idx_usage_quota_observations_latest

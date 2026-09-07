@@ -36,6 +36,7 @@ interface TurnState {
   reasoningEffort: string | null;
   serviceTier: string | null;
   cumulativeBefore: TokenUsageBreakdown | null;
+  cumulativeAfter: TokenUsageBreakdown | null;
   quotaBefore: Promise<CodexRateLimitObservation | null>;
   resolveRateLimits?: RateLimitsResolver;
   protocolVersion: string | null;
@@ -66,6 +67,32 @@ class TurnUsageAccounting {
         __turnStarted: true,
         __eventId: event.id,
       });
+      return null;
+    }
+
+    if (event.method === "thread/tokenUsage/updated") {
+      const turnId = turnIdFromParams(params);
+      if (turnId === null) return null;
+      const state = this.ensureTurn(userId, event.hostId, event.threadId, turnId, options, params);
+      const tokenUsage = recordFromUnknown(params.tokenUsage);
+      const cumulative = normalizeTokenUsageBreakdown(tokenUsage?.total);
+      if (cumulative === null) return null;
+      if (
+        state.cumulativeAfter === null ||
+        !cumulativeUsageRegressed(cumulative, state.cumulativeAfter)
+      ) {
+        state.cumulativeAfter = cumulative;
+      }
+      // Some app-server versions publish the cumulative notification after turn/completed. The
+      // turn projection starts as unavailable in that case, so reconcile it once the late event
+      // arrives. Raw Responses events remain the preferred source when available.
+      if (
+        state.finalized &&
+        turnUsageRepository.aggregateTurn(userId, event.threadId, turnId) === null
+      ) {
+        this.recordCumulativeFallback(userId, state);
+        this.refreshFinalizedTurn(userId, state);
+      }
       return null;
     }
 
@@ -139,6 +166,7 @@ class TurnUsageAccounting {
         stringOrNull(params.effort) ?? settings?.effort ?? stringOrNull(params.reasoningEffort),
       serviceTier: stringOrNull(params.serviceTier) ?? settings?.serviceTier ?? null,
       cumulativeBefore: null,
+      cumulativeAfter: null,
       quotaBefore: Promise.resolve(null),
       resolveRateLimits: options.resolveRateLimits,
       protocolVersion: options.protocolVersion ?? null,
@@ -247,14 +275,18 @@ class TurnUsageAccounting {
   }
 
   private recordCumulativeFallback(userId: number, state: TurnState): AggregatedTurnUsage | null {
-    const finalUsage = latestCumulativeUsage(state.hostId, state.threadId);
+    const finalUsage = state.cumulativeAfter ?? latestCumulativeUsage(state.hostId, state.threadId);
     if (finalUsage === null || state.cumulativeBefore === null) return null;
     if (cumulativeUsageRegressed(finalUsage, state.cumulativeBefore)) return null;
+    const responseId = `cumulative:${state.turnId}`;
+    if (turnUsageRepository.hasRequest(userId, state.threadId, state.turnId, responseId)) {
+      return turnUsageRepository.aggregateTurn(userId, state.threadId, state.turnId);
+    }
     const usage = subtractUsage(finalUsage, state.cumulativeBefore);
     const request = requestFromUsage(
       state,
       usage,
-      `cumulative:${state.turnId}`,
+      responseId,
       "cumulative_delta",
     );
     turnUsageRepository.recordRequest(userId, request);

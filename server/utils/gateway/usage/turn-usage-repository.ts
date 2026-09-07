@@ -3,6 +3,8 @@ import type {
   CodexRateLimitObservation,
   PricingCompleteness,
   UsageDashboardSummary,
+  UsageHistoricalImportSummary,
+  UsageHistoricalSource,
   ThreadTurnUsageSummary,
   TokenUsageBreakdown,
   UsageMonthSummary,
@@ -15,6 +17,23 @@ import { gatewayDatabase, withGatewayDatabaseTransaction } from "../storage/data
 import { recordFromUnknown } from "~~/shared/utils/records";
 
 export type UsageRequestSource = "raw_response" | "cumulative_delta";
+
+export interface HistoricalUsageRecordInput {
+  sourceRecordId: string;
+  sourceFingerprint: string;
+  sourceHosts: string[];
+  totalTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  apiEquivalentCostMicros: number | null;
+  pricingVersion: string | null;
+  pricingCompleteness: PricingCompleteness;
+  observedAt: number;
+  importedAt?: number;
+}
 
 export interface UsageRequestInput {
   hostId: number;
@@ -63,6 +82,61 @@ export function currentUsageAccountScopeId() {
 }
 
 export class TurnUsageRepository {
+  upsertHistoricalRecords(
+    userId: number,
+    source: UsageHistoricalSource,
+    records: HistoricalUsageRecordInput[],
+  ) {
+    if (records.length === 0) return;
+    const accountScopeId = usageAccountScopeId(userId);
+    withGatewayDatabaseTransaction((database) => {
+      const statement = database.prepare(
+        `INSERT INTO usage_historical_records (
+          user_id, account_scope_id, source, source_record_id, source_fingerprint,
+          source_hosts_json, total_tokens, input_tokens, cached_input_tokens,
+          cache_write_input_tokens, output_tokens, reasoning_output_tokens,
+          api_equivalent_cost_micros, pricing_version, pricing_completeness,
+          observed_at, imported_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, account_scope_id, source, source_record_id) DO UPDATE SET
+          source_fingerprint = excluded.source_fingerprint,
+          source_hosts_json = excluded.source_hosts_json,
+          total_tokens = excluded.total_tokens,
+          input_tokens = excluded.input_tokens,
+          cached_input_tokens = excluded.cached_input_tokens,
+          cache_write_input_tokens = excluded.cache_write_input_tokens,
+          output_tokens = excluded.output_tokens,
+          reasoning_output_tokens = excluded.reasoning_output_tokens,
+          api_equivalent_cost_micros = excluded.api_equivalent_cost_micros,
+          pricing_version = excluded.pricing_version,
+          pricing_completeness = excluded.pricing_completeness,
+          observed_at = excluded.observed_at,
+          imported_at = excluded.imported_at`,
+      );
+      for (const record of records) {
+        statement.run(
+          userId,
+          accountScopeId,
+          source,
+          record.sourceRecordId,
+          record.sourceFingerprint,
+          JSON.stringify(uniqueStrings(record.sourceHosts)),
+          integer(record.totalTokens),
+          integer(record.inputTokens),
+          integer(record.cachedInputTokens),
+          integer(record.cacheWriteInputTokens),
+          integer(record.outputTokens),
+          integer(record.reasoningOutputTokens),
+          nullableInteger(record.apiEquivalentCostMicros),
+          record.pricingVersion,
+          record.pricingCompleteness,
+          integer(record.observedAt),
+          integer(record.importedAt ?? Date.now()),
+        );
+      }
+    });
+  }
+
   recordRequest(userId: number, input: UsageRequestInput) {
     const accountScopeId = usageAccountScopeId(userId);
     const usage = normalizeUsage(input.usage);
@@ -333,6 +407,7 @@ export class TurnUsageRepository {
       thisMonth: this.monthSummary(userId, now),
       monthly: this.periodSummaries(userId, "month"),
       weekly: this.periodSummaries(userId, "week"),
+      historicalImport: this.historicalImportSummary(userId),
       quotaWindows: this.latestQuotaSnapshots(userId),
       liveHostCount: 0,
       failedHostCount: 0,
@@ -342,24 +417,39 @@ export class TurnUsageRepository {
   monthSummary(userId: number, now = Date.now()): UsageMonthSummary {
     const periodStart = usagePeriodStart(now);
     const accountScopeId = usageAccountScopeId(userId);
-    const rows = gatewayDatabase()
+    const liveRows = gatewayDatabase()
       .prepare(
         `SELECT api_equivalent_cost_micros FROM usage_turns
          WHERE user_id = ? AND account_scope_id = ? AND usage_scope = 'direct_turn'
            AND observed_at >= ?`,
       )
       .all(userId, accountScopeId, periodStart)
-      .map((row) => ({
-        api_equivalent_cost_micros: recordFromUnknown(row)?.api_equivalent_cost_micros,
-      }));
-    const pricedCosts = rows
-      .map((row) => numberOrNull(row.api_equivalent_cost_micros))
-      .filter((value): value is number => value !== null);
-    const apiEquivalentCostMicros = pricedCosts.length === 0 ? null : sum(pricedCosts);
+      .map((row) => recordFromUnknown(row)?.api_equivalent_cost_micros);
+    const historicalRows = gatewayDatabase()
+      .prepare(
+        `SELECT total_tokens, api_equivalent_cost_micros
+         FROM usage_historical_records
+         WHERE user_id = ? AND account_scope_id = ? AND observed_at >= ?`,
+      )
+      .all(userId, accountScopeId, periodStart)
+      .map((row) => recordFromUnknown(row) ?? {});
+    const gatewayApiEquivalentCostMicros = nullableSum(liveRows);
+    const historicalApiEquivalentCostMicros = nullableSum(
+      historicalRows.map((row) => row.api_equivalent_cost_micros),
+    );
+    const apiEquivalentCostMicros = combineNullableCosts(
+      gatewayApiEquivalentCostMicros,
+      historicalApiEquivalentCostMicros,
+    );
     const subscriptionPriceMicros = configuredSubscriptionPriceMicros();
     return {
       periodStart: new Date(periodStart).toISOString(),
       apiEquivalentCostMicros,
+      gatewayApiEquivalentCostMicros,
+      historicalApiEquivalentCostMicros,
+      gatewayTurnCount: liveRows.length,
+      historicalRecordCount: historicalRows.length,
+      historicalTotalTokens: sum(historicalRows.map((row) => integer(row.total_tokens))),
       subscriptionPriceMicros,
       subscriptionPriceSource: subscriptionPriceMicros === null ? "unavailable" : "configured",
       paybackRatio:
@@ -368,6 +458,34 @@ export class TurnUsageRepository {
         apiEquivalentCostMicros === null
           ? null
           : apiEquivalentCostMicros / subscriptionPriceMicros,
+    };
+  }
+
+  historicalImportSummary(userId: number): UsageHistoricalImportSummary | null {
+    const accountScopeId = usageAccountScopeId(userId);
+    const rows = gatewayDatabase()
+      .prepare(
+        `SELECT source, source_hosts_json, total_tokens, api_equivalent_cost_micros,
+                observed_at, imported_at
+         FROM usage_historical_records
+         WHERE user_id = ? AND account_scope_id = ?
+         ORDER BY observed_at ASC`,
+      )
+      .all(userId, accountScopeId)
+      .map((row) => recordFromUnknown(row) ?? {});
+    if (rows.length === 0) return null;
+    const costs = nullableSum(rows.map((row) => row.api_equivalent_cost_micros));
+    const observedAt = rows.map((row) => integer(row.observed_at));
+    const importedAt = rows.map((row) => integer(row.imported_at));
+    return {
+      source: "ccusage_codex",
+      recordCount: rows.length,
+      totalTokens: sum(rows.map((row) => integer(row.total_tokens))),
+      apiEquivalentCostMicros: costs,
+      coverageStart: new Date(Math.min(...observedAt)).toISOString(),
+      coverageEnd: new Date(Math.max(...observedAt)).toISOString(),
+      importedAt: Math.max(...importedAt),
+      sourceHosts: uniqueStrings(rows.flatMap((row) => stringArrayFromJson(row.source_hosts_json))),
     };
   }
 
@@ -391,6 +509,8 @@ export class TurnUsageRepository {
         periodEnd: periodEndFor(periodStart, period),
         turnCount: 0,
         pricedTurnCount: 0,
+        historicalRecordCount: 0,
+        historicalPricedRecordCount: 0,
         totalTokens: 0,
         apiEquivalentCostMicros: 0,
       };
@@ -399,6 +519,37 @@ export class TurnUsageRepository {
       const cost = numberOrNull(record.api_equivalent_cost_micros);
       if (cost !== null) {
         existing.pricedTurnCount += 1;
+        existing.apiEquivalentCostMicros += cost;
+      }
+      buckets.set(periodStart, existing);
+    }
+    const historicalRows = gatewayDatabase()
+      .prepare(
+        `SELECT observed_at, total_tokens, api_equivalent_cost_micros
+         FROM usage_historical_records
+         WHERE user_id = ? AND account_scope_id = ?
+         ORDER BY observed_at ASC`,
+      )
+      .all(userId, accountScopeId);
+    for (const row of historicalRows) {
+      const record = recordFromUnknown(row);
+      if (record === null) continue;
+      const periodStart = periodStartFor(integer(record.observed_at), period);
+      const existing = buckets.get(periodStart) ?? {
+        periodStart,
+        periodEnd: periodEndFor(periodStart, period),
+        turnCount: 0,
+        pricedTurnCount: 0,
+        historicalRecordCount: 0,
+        historicalPricedRecordCount: 0,
+        totalTokens: 0,
+        apiEquivalentCostMicros: 0,
+      };
+      existing.historicalRecordCount += 1;
+      existing.totalTokens += integer(record.total_tokens);
+      const cost = numberOrNull(record.api_equivalent_cost_micros);
+      if (cost !== null) {
+        existing.historicalPricedRecordCount += 1;
         existing.apiEquivalentCostMicros += cost;
       }
       buckets.set(periodStart, existing);
@@ -587,6 +738,35 @@ function periodEndFor(periodStart: string, period: "month" | "week") {
 
 function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
+}
+
+function nullableSum(values: unknown[]) {
+  const numbers = values
+    .map((value) => numberOrNull(value))
+    .filter((value): value is number => value !== null);
+  return numbers.length === 0 ? null : sum(numbers);
+}
+
+function combineNullableCosts(left: number | null, right: number | null) {
+  if (left === null) return right;
+  if (right === null) return left;
+  return left + right;
+}
+
+function nullableInteger(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  return integer(value);
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean))).sort();
+}
+
+function stringArrayFromJson(value: unknown) {
+  const parsed = parseJson(value);
+  return Array.isArray(parsed)
+    ? parsed.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function usagePeriodStart(now: number) {

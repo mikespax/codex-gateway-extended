@@ -105,6 +105,48 @@ void test("usage ledger deduplicates a raw response and persists the turn projec
     const rows = repository.listThread(42, "thread-1");
     assert.equal(rows.length, 2);
     assert.equal(rows[1]?.apiEquivalentCostMicros, 480);
+
+    repository.upsertHistoricalRecords(42, "ccusage_codex", [
+      {
+        sourceRecordId: "rollout-migrated",
+        sourceFingerprint: "fingerprint-1",
+        sourceHosts: ["mac", "vps"],
+        totalTokens: 500,
+        inputTokens: 450,
+        cachedInputTokens: 50,
+        cacheWriteInputTokens: 0,
+        outputTokens: 50,
+        reasoningOutputTokens: 0,
+        apiEquivalentCostMicros: 720,
+        pricingVersion: "ccusage-test",
+        pricingCompleteness: "complete",
+        observedAt: 150,
+      },
+      {
+        sourceRecordId: "rollout-migrated",
+        sourceFingerprint: "fingerprint-2",
+        sourceHosts: ["vps"],
+        totalTokens: 500,
+        inputTokens: 450,
+        cachedInputTokens: 50,
+        cacheWriteInputTokens: 0,
+        outputTokens: 50,
+        reasoningOutputTokens: 0,
+        apiEquivalentCostMicros: 720,
+        pricingVersion: "ccusage-test",
+        pricingCompleteness: "complete",
+        observedAt: 150,
+      },
+    ]);
+    const dashboard = repository.dashboardSummary(42, 200);
+    assert.equal(dashboard.historicalImport?.recordCount, 1);
+    assert.deepEqual(dashboard.historicalImport?.sourceHosts, ["mac", "vps"]);
+    assert.equal(dashboard.thisMonth.gatewayApiEquivalentCostMicros, 480);
+    assert.equal(dashboard.thisMonth.historicalApiEquivalentCostMicros, 720);
+    assert.equal(dashboard.thisMonth.apiEquivalentCostMicros, 1200);
+    assert.equal(dashboard.thisMonth.historicalRecordCount, 1);
+    assert.equal(dashboard.monthly[0]?.historicalRecordCount, 1);
+    assert.equal(dashboard.monthly[0]?.historicalPricedRecordCount, 1);
   });
 
   await rm(directory, { recursive: true, force: true });
