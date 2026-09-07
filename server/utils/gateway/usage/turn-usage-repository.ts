@@ -352,11 +352,10 @@ export class TurnUsageRepository {
       .map((row) => ({
         api_equivalent_cost_micros: recordFromUnknown(row)?.api_equivalent_cost_micros,
       }));
-    const apiEquivalentCostMicros = sum(
-      rows
-        .map((row) => numberOrNull(row.api_equivalent_cost_micros))
-        .filter((value): value is number => value !== null),
-    );
+    const pricedCosts = rows
+      .map((row) => numberOrNull(row.api_equivalent_cost_micros))
+      .filter((value): value is number => value !== null);
+    const apiEquivalentCostMicros = pricedCosts.length === 0 ? null : sum(pricedCosts);
     const subscriptionPriceMicros = configuredSubscriptionPriceMicros();
     return {
       periodStart: new Date(periodStart).toISOString(),
@@ -364,7 +363,9 @@ export class TurnUsageRepository {
       subscriptionPriceMicros,
       subscriptionPriceSource: subscriptionPriceMicros === null ? "unavailable" : "configured",
       paybackRatio:
-        subscriptionPriceMicros === null || subscriptionPriceMicros <= 0
+        subscriptionPriceMicros === null ||
+        subscriptionPriceMicros <= 0 ||
+        apiEquivalentCostMicros === null
           ? null
           : apiEquivalentCostMicros / subscriptionPriceMicros,
     };
@@ -512,6 +513,7 @@ function integer(value: unknown) {
 }
 
 function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
 }
