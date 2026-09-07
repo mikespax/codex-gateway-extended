@@ -6,7 +6,21 @@ const { t } = useI18n();
 
 const apiEquivalent = computed(() => {
   const micros = props.usage.apiEquivalentCostMicros;
-  if (micros === null) return t("app.turnUsageApiEquivalentUnavailable");
+  if (micros === null) {
+    const providerUsdMicros = props.usage.providerEstimatedUsdMicros;
+    if (providerUsdMicros !== null) {
+      return t("app.turnUsageProviderEstimate", {
+        cost: (providerUsdMicros / 1_000_000).toFixed(2),
+      });
+    }
+    const providerCreditsMicros = props.usage.providerEstimatedCreditsMicros;
+    if (providerCreditsMicros !== null) {
+      return t("app.turnUsageProviderCredits", {
+        credits: formatCredits(providerCreditsMicros),
+      });
+    }
+    return t("app.turnUsageApiEquivalentUnavailable");
+  }
   const dollars = micros / 1_000_000;
   const precision = dollars > 0 && dollars < 0.01 ? 4 : 2;
   return t("app.turnUsageApiEquivalent", { cost: dollars.toFixed(precision) });
@@ -52,6 +66,12 @@ function compactTokens(value: number) {
   if (value < 1_000) return String(value);
   if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}k`;
   return `${(value / 1_000_000).toFixed(value < 10_000_000 ? 1 : 0)}m`;
+}
+
+function formatCredits(micros: number) {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 2,
+  }).format(micros / 1_000_000);
 }
 
 function signedPercent(value: number) {

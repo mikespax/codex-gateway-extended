@@ -71,7 +71,8 @@ watch(
 
 onBeforeUnmount(pause);
 
-function formatUsd(micros: number) {
+function formatUsd(micros: number | null) {
+  if (micros === null) return t("app.codexUsageUnavailable");
   return `$${(micros / 1_000_000).toFixed(2)}`;
 }
 </script>

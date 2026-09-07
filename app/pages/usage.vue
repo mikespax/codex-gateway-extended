@@ -21,12 +21,14 @@ const weeklyRows = computed(() => [...(dashboard.value?.weekly ?? [])].reverse()
 const monthlyMax = computed(() => maxCost(monthlyRows.value));
 const weeklyMax = computed(() => maxCost(weeklyRows.value));
 const weeklyWindow = computed(() =>
-  (dashboard.value?.quotaWindows ?? []).find(
+  preferredQuotaWindow(
+    dashboard.value?.quotaWindows ?? [],
     (window) => window.windowDurationMins !== null && window.windowDurationMins >= 10_080,
   ),
 );
 const shortWindow = computed(() =>
-  (dashboard.value?.quotaWindows ?? []).find(
+  preferredQuotaWindow(
+    dashboard.value?.quotaWindows ?? [],
     (window) => window.windowDurationMins !== null && window.windowDurationMins < 10_080,
   ),
 );
@@ -134,6 +136,18 @@ function hasPricedData(period: UsagePeriodSummary) {
 
 function maxCost(periods: UsagePeriodSummary[]) {
   return periods.reduce((max, period) => Math.max(max, period.apiEquivalentCostMicros), 0);
+}
+
+function preferredQuotaWindow(
+  windows: UsageQuotaSnapshot[],
+  predicate: (window: UsageQuotaSnapshot) => boolean,
+) {
+  const candidates = windows.filter(predicate);
+  return (
+    candidates.find((window) => window.key.startsWith("codex:")) ??
+    candidates.find((window) => !window.key.startsWith("base_model_inference:")) ??
+    candidates[0]
+  );
 }
 
 function quotaLabel(window: UsageQuotaSnapshot) {

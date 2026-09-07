@@ -285,6 +285,8 @@
     "turnDuration": "Turn duration {duration}",
     "turnUsageApiEquivalent": "API-equivalent ~${cost}",
     "turnUsageApiEquivalentUnavailable": "API-equivalent unavailable",
+    "turnUsageProviderEstimate": "Provider estimate ~${cost}",
+    "turnUsageProviderCredits": "Provider estimate {credits} credits",
     "turnUsageQuota": "observed account quota {window} {delta}",
     "turnUsageQuotaUsed": "({window} {percent}% used)",
     "turnUsageQuotaReset": "quota reset between observations",
