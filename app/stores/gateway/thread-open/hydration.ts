@@ -101,9 +101,6 @@ function applyCommonThreadResult(
   if (result.tokenUsage !== null && result.tokenUsage !== undefined) {
     runtime.setThreadTokenUsage(hostId, threadId, result.tokenUsage);
   } else syncTokenUsageFromRecentEvents(result.recentEvents);
-  if (result.turnUsage !== undefined) {
-    runtime.setThreadTurnUsages(hostId, threadId, result.turnUsage);
-  }
   syncRuntimeStatusFromResult(threadId, result);
 }
 

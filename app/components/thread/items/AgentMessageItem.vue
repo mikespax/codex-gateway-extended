@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ThreadHistoryItem, ThreadTurnUsageSummary } from "~~/shared/types";
+import type { ThreadHistoryItem } from "~~/shared/types";
 import { computed } from "vue";
 import { Message, MessageContent } from "@codex-gateway/ai-elements/message";
 import MarkdownContent from "@/components/common/MarkdownContent.vue";
@@ -11,7 +11,6 @@ import type { DisplayedTurnTiming } from "@/utils/turn-timing";
 const props = defineProps<{
   item: ThreadHistoryItem;
   turnTiming?: DisplayedTurnTiming | null;
-  turnUsage?: ThreadTurnUsageSummary | null;
   agentActionsAvailable?: boolean;
   sentAt?: number | string | null;
 }>();
@@ -19,9 +18,7 @@ const props = defineProps<{
 const text = computed(() => threadItemText(props.item));
 const inProgress = computed(() => isItemInProgress(props.item));
 const hasFooter = computed(
-  () =>
-    Boolean(text.value) &&
-    (props.turnUsage != null || (props.turnTiming != null && props.agentActionsAvailable === true)),
+  () => Boolean(text.value) && props.turnTiming != null && props.agentActionsAvailable === true,
 );
 </script>
 
@@ -37,12 +34,7 @@ const hasFooter = computed(
         :value="props.sentAt"
         class="mt-3"
       />
-      <AgentMessageActions
-        v-if="hasFooter"
-        :text="text"
-        :turn-timing="turnTiming"
-        :turn-usage="turnUsage"
-      />
+      <AgentMessageActions v-if="hasFooter" :text="text" :turn-timing="turnTiming" />
     </MessageContent>
   </Message>
 </template>

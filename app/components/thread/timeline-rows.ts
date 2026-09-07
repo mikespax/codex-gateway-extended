@@ -1,8 +1,4 @@
-import type {
-  ThreadTimelineItem,
-  ThreadTimelineTurn,
-  ThreadTurnUsageSummary,
-} from "~~/shared/types";
+import type { ThreadTimelineItem, ThreadTimelineTurn } from "~~/shared/types";
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
 import { threadItemText } from "@/utils/thread-items";
 import { itemKey, userMessageVariant, type ThreadTurnSections } from "./thread-turn-sections";
@@ -44,7 +40,6 @@ export type ThreadTimelineRow =
       item: ThreadTimelineItem;
       userMessageVariant: "normal" | "steer";
       turnTiming: DisplayedTurnTiming | null;
-      turnUsage: ThreadTurnUsageSummary | null;
       agentActionsAvailable: boolean;
       sentAt: number | string | null;
       turnIsActive: boolean;
@@ -57,7 +52,6 @@ export type ThreadTimelineRow =
       completedAt: number | null;
       durationMs: number | null;
       active: boolean;
-      turnUsage: ThreadTurnUsageSummary | null;
     }
   | {
       key: string;
@@ -80,12 +74,10 @@ export function buildThreadTimelineRows(input: {
   threadId: string | null;
   turns: ThreadTimelineTurnState[];
   agentActionsAvailable: boolean;
-  getTurnUsage?: (turnId: string) => ThreadTurnUsageSummary | null;
 }) {
   return input.turns.flatMap(({ turn, sections, intermediateOpen }) => {
     const rows: ThreadTimelineRow[] = [];
     const timing = displayedTurnTiming(turn, sections.turnIsActive);
-    const turnUsage = input.getTurnUsage?.(turn.id) ?? null;
     const timingTarget = sections.finalItems.findLast((item) => item.type === "agentMessage");
     appendItemRows(rows, input.threadId, turn, "user", sections.userItems, sections);
 
@@ -157,21 +149,15 @@ export function buildThreadTimelineRows(input: {
       timingTarget,
       timing,
       input.agentActionsAvailable,
-      turnUsage,
     );
     // Completed turns normally render timing beside the final answer's copy action. Keep a
     // standalone row only for interrupted/error turns that never produced an Agent answer.
-    if (
-      input.agentActionsAvailable &&
-      (hasTimingValue(timing) || turnUsage !== null) &&
-      timingTarget === undefined
-    ) {
+    if (input.agentActionsAvailable && hasTimingValue(timing) && timingTarget === undefined) {
       rows.push({
         key: `${input.threadId}:turn-${turn.id}:duration`,
         type: "turnDuration",
         turnId: turn.id,
         ...timing,
-        turnUsage,
       });
     }
     return rows;
@@ -193,7 +179,7 @@ export function reuseUnchangedTimelineRows(
 export function estimateThreadTimelineRow(row: ThreadTimelineRow | undefined) {
   if (row === undefined) return 96;
   if (row.type === "intermediateHeader") return 72;
-  if (row.type === "turnDuration") return row.turnUsage === null ? 28 : 64;
+  if (row.type === "turnDuration") return 28;
   if (row.type === "workingStatus") {
     return row.latestOperation !== null && row.latestOperation !== "" ? 52 : 36;
   }
@@ -331,7 +317,6 @@ function appendItemRows(
   timingTarget?: ThreadTimelineItem,
   timing: DisplayedTurnTiming | null = null,
   agentActionsAvailable = false,
-  turnUsage: ThreadTurnUsageSummary | null = null,
 ) {
   items.forEach((item, index) => {
     rows.push({
@@ -342,7 +327,6 @@ function appendItemRows(
       item,
       userMessageVariant: userMessageVariant(item, sections),
       turnTiming: item === timingTarget ? timing : null,
-      turnUsage: item === timingTarget ? turnUsage : null,
       agentActionsAvailable: item === timingTarget && agentActionsAvailable,
       sentAt: messageTimestamp(item, turn),
       turnIsActive: sections.turnIsActive,
@@ -418,7 +402,6 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.section === right.section &&
       left.userMessageVariant === right.userMessageVariant &&
       left.agentActionsAvailable === right.agentActionsAvailable &&
-      left.turnUsage === right.turnUsage &&
       left.sentAt === right.sentAt &&
       left.turnIsActive === right.turnIsActive &&
       sameTurnTiming(left.turnTiming, right.turnTiming)
@@ -430,8 +413,7 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.startedAt === right.startedAt &&
       left.completedAt === right.completedAt &&
       left.durationMs === right.durationMs &&
-      left.active === right.active &&
-      left.turnUsage === right.turnUsage
+      left.active === right.active
     );
   }
   if (left.type === "workingStatus" && right.type === "workingStatus") {

@@ -1,6 +1,5 @@
 import type { GatewayEvent, ProjectRecord } from "./records";
 import type { ThreadHistoryItem, ThreadTimelineHistoryState } from "../thread-history/types";
-import type { ThreadTurnUsageSummary } from "./account-usage";
 
 export type ThreadRuntimeStatus = "idle" | "running" | "completed" | "failed" | "interrupted";
 
@@ -52,7 +51,6 @@ export interface ThreadOpenResult {
   runtimeStatus?: ThreadRuntimeStatus | null;
   threadSettings?: ThreadSettingsState | null;
   tokenUsage?: ThreadTokenUsageState | null;
-  turnUsage?: ThreadTurnUsageSummary[];
   projectId?: number | null;
   project?: ProjectRecord | null;
   turnsPage: {

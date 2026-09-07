@@ -1,4 +1,4 @@
-import type { GatewayEvent, RpcEnvelope, ThreadTurnUsageSummary } from "~~/shared/types";
+import type { GatewayEvent, RpcEnvelope } from "~~/shared/types";
 import { parseRpcEnvelope } from "~~/shared/runtime/app-server";
 import { gatewayEventStore } from "../state/gateway-events";
 import { currentGatewayUserId } from "../state/memory";
@@ -47,32 +47,14 @@ class ThreadRuntimeEventBus {
     this.publish(event);
     this.publishRuntimeStatus(event);
     dispatchThreadRuntimeNotification(event, options);
-    const accountingOptions = {
-      ...options,
-      onSummary: (usage: ThreadTurnUsageSummary) => {
-        this.record(hostId, threadId, "gateway/usage/turn", {
-          method: "gateway/usage/turn",
-          params: { threadId, usage },
-        });
-      },
-    };
-    void turnUsageAccounting
-      .observeEvent(event, accountingOptions)
-      .then((usage) => {
-        if (usage === null) return;
-        this.record(hostId, threadId, "gateway/usage/turn", {
-          method: "gateway/usage/turn",
-          params: { threadId, usage },
-        });
-      })
-      .catch((error) => {
-        runtimeLog("turn usage accounting failed", {
-          hostId,
-          threadId,
-          method,
-          message: error instanceof Error ? error.message : String(error),
-        });
+    void turnUsageAccounting.observeEvent(event, options).catch((error) => {
+      runtimeLog("turn usage accounting failed", {
+        hostId,
+        threadId,
+        method,
+        message: error instanceof Error ? error.message : String(error),
       });
+    });
     return event;
   }
 

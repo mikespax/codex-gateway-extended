@@ -7,13 +7,10 @@ import { Button } from "@codex-gateway/ui/button";
 import { toast } from "@codex-gateway/ui/sonner";
 import TurnDurationLabel from "@/components/thread/TurnDurationLabel.vue";
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
-import type { ThreadTurnUsageSummary } from "~~/shared/types";
-import TurnUsageSummary from "@/components/thread/TurnUsageSummary.vue";
 
 const props = defineProps<{
   text: string;
   turnTiming?: DisplayedTurnTiming | null;
-  turnUsage?: ThreadTurnUsageSummary | null;
 }>();
 
 const { t } = useI18n();
@@ -43,7 +40,6 @@ async function copyText() {
     class="mt-3 flex w-full items-center gap-2 border-t border-border/60 pt-2"
   >
     <TurnDurationLabel v-if="turnTiming" :timing="turnTiming" />
-    <TurnUsageSummary v-if="turnUsage" :usage="turnUsage" />
     <Button
       data-testid="copy-agent-response-button"
       type="button"

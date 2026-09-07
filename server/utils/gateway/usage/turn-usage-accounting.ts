@@ -24,7 +24,6 @@ export type RateLimitsResolver = () => Promise<unknown>;
 export interface TurnUsageObservationOptions {
   resolveRateLimits?: RateLimitsResolver;
   resolveThreadUsage?: RateLimitsResolver;
-  onSummary?: (summary: ThreadTurnUsageSummary) => void;
   protocolVersion?: string | null;
   protocolSchemaHash?: string | null;
 }
@@ -44,7 +43,6 @@ interface TurnState {
   threadUsageBefore: Promise<ProviderThreadUsage | null>;
   resolveThreadUsage?: RateLimitsResolver;
   providerReconciliationScheduled: boolean;
-  onSummary?: (summary: ThreadTurnUsageSummary) => void;
   protocolVersion: string | null;
   protocolSchemaHash: string | null;
   finalized: boolean;
@@ -179,7 +177,6 @@ class TurnUsageAccounting {
       threadUsageBefore: Promise.resolve(null),
       resolveThreadUsage: options.resolveThreadUsage,
       providerReconciliationScheduled: false,
-      onSummary: options.onSummary,
       protocolVersion: options.protocolVersion ?? null,
       protocolSchemaHash: options.protocolSchemaHash ?? null,
       finalized: false,
@@ -231,7 +228,6 @@ class TurnUsageAccounting {
       state.resolveRateLimits = options.resolveRateLimits;
     if (options.resolveThreadUsage !== undefined)
       state.resolveThreadUsage = options.resolveThreadUsage;
-    if (options.onSummary !== undefined) state.onSummary = options.onSummary;
   }
 
   private async recordRawResponse(
@@ -329,7 +325,6 @@ class TurnUsageAccounting {
       current.observedAt,
     );
     turnUsageRepository.saveTurn(userId, updated);
-    state.onSummary?.(updated);
   }
 
   private async readProviderDelta(state: TurnState) {
@@ -369,7 +364,6 @@ class TurnUsageAccounting {
       providerDelta,
     );
     turnUsageRepository.saveTurn(userId, updated);
-    state.onSummary?.(updated);
   }
 }
 

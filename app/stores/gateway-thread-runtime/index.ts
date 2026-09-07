@@ -1,10 +1,6 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
-import type {
-  ThreadRuntimeStatus,
-  ThreadTokenUsageState,
-  ThreadTurnUsageSummary,
-} from "~~/shared/types";
+import type { ThreadRuntimeStatus, ThreadTokenUsageState } from "~~/shared/types";
 import { pinnedKey } from "@/stores/gateway/thread-utils/identity";
 import { createThreadRuntimeActions } from "./actions/runtime";
 
@@ -21,7 +17,6 @@ export const useGatewayThreadRuntimeStore = defineStore("gateway-thread-runtime"
   const activeTurnIdsByThreadKey = ref<Record<string, string>>({});
   const activeTerminalProcessByThreadKey = ref<Record<string, ActiveTerminalProcess>>({});
   const threadTokenUsageByKey = ref<Record<string, ThreadTokenUsageState>>({});
-  const threadTurnUsageByKey = ref<Record<string, ThreadTurnUsageSummary>>({});
   const runningThreadKeySet = computed(() => new Set(runningThreadKeys.value));
   const actions = createThreadRuntimeActions();
 
@@ -36,7 +31,6 @@ export const useGatewayThreadRuntimeStore = defineStore("gateway-thread-runtime"
     activeTurnIdsByThreadKey.value = {};
     activeTerminalProcessByThreadKey.value = {};
     threadTokenUsageByKey.value = {};
-    threadTurnUsageByKey.value = {};
   }
 
   return {
@@ -46,7 +40,6 @@ export const useGatewayThreadRuntimeStore = defineStore("gateway-thread-runtime"
     activeTurnIdsByThreadKey,
     activeTerminalProcessByThreadKey,
     threadTokenUsageByKey,
-    threadTurnUsageByKey,
     runningThreadKeySet,
     statusFor,
     resetState,
