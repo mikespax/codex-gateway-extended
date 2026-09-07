@@ -102,8 +102,14 @@ function formatPeriod(period: UsagePeriodSummary, kind: "month" | "week") {
 }
 
 function barWidth(period: UsagePeriodSummary, max: number) {
-  if (period.apiEquivalentCostMicros <= 0 || max <= 0) return "0%";
+  if (period.pricedTurnCount <= 0 || period.apiEquivalentCostMicros <= 0 || max <= 0) return "0%";
   return `${Math.max(4, Math.round((period.apiEquivalentCostMicros / max) * 100))}%`;
+}
+
+function periodCost(period: UsagePeriodSummary) {
+  return period.pricedTurnCount === 0
+    ? t("usage.unavailable")
+    : formatUsd(period.apiEquivalentCostMicros);
 }
 
 function maxCost(periods: UsagePeriodSummary[]) {
@@ -274,16 +280,24 @@ function quotaTone(window: UsageQuotaSnapshot) {
               <div v-for="row in monthlyRows" :key="row.periodStart" class="space-y-1.5">
                 <div class="flex items-center justify-between gap-3 text-xs">
                   <span class="font-medium">{{ formatPeriod(row, "month") }}</span>
-                  <span class="tabular-nums text-ink-muted">{{
-                    formatUsd(row.apiEquivalentCostMicros)
-                  }}</span>
+                  <span class="tabular-nums text-ink-muted">{{ periodCost(row) }}</span>
                 </div>
-                <div class="h-2 overflow-hidden rounded-full bg-canvas-soft">
+                <div
+                  v-if="row.pricedTurnCount > 0"
+                  class="h-2 overflow-hidden rounded-full bg-canvas-soft"
+                  :aria-label="periodCost(row)"
+                >
                   <div
                     class="h-full rounded-full bg-primary/75"
                     :style="{ width: barWidth(row, monthlyMax) }"
                   />
                 </div>
+                <div
+                  v-else
+                  class="flex h-2 items-center rounded-full border border-dashed border-ink-muted/40 bg-canvas-soft"
+                  role="img"
+                  :aria-label="$t('usage.periodUnavailable')"
+                />
                 <p class="text-[0.6875rem] text-ink-muted">
                   {{
                     $t("usage.periodDetail", {
@@ -314,16 +328,24 @@ function quotaTone(window: UsageQuotaSnapshot) {
               <div v-for="row in weeklyRows" :key="row.periodStart" class="space-y-1.5">
                 <div class="flex items-center justify-between gap-3 text-xs">
                   <span class="font-medium">{{ formatPeriod(row, "week") }}</span>
-                  <span class="tabular-nums text-ink-muted">{{
-                    formatUsd(row.apiEquivalentCostMicros)
-                  }}</span>
+                  <span class="tabular-nums text-ink-muted">{{ periodCost(row) }}</span>
                 </div>
-                <div class="h-2 overflow-hidden rounded-full bg-canvas-soft">
+                <div
+                  v-if="row.pricedTurnCount > 0"
+                  class="h-2 overflow-hidden rounded-full bg-canvas-soft"
+                  :aria-label="periodCost(row)"
+                >
                   <div
                     class="h-full rounded-full bg-accent-green/75"
                     :style="{ width: barWidth(row, weeklyMax) }"
                   />
                 </div>
+                <div
+                  v-else
+                  class="flex h-2 items-center rounded-full border border-dashed border-ink-muted/40 bg-canvas-soft"
+                  role="img"
+                  :aria-label="$t('usage.periodUnavailable')"
+                />
                 <p class="text-[0.6875rem] text-ink-muted">
                   {{
                     $t("usage.periodDetail", {

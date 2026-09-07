@@ -878,6 +878,7 @@
     "weeklyHistoryNote": "UTC Monday–Sunday buckets from recorded Gateway turns",
     "turns": "{count} turns",
     "periodDetail": "{turns} turns · {priced} priced · {tokens} tokens",
+    "periodUnavailable": "Token usage unavailable for these turns",
     "noData": "No completed Gateway turns recorded yet",
     "disclaimer": "Quota percentages are provider-reported account observations. They can include activity from another host or Codex client between snapshots. Standalone Codex installs are not visible unless they use this Gateway.",
     "sevenDay": "7-day",

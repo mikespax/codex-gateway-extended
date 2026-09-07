@@ -19,7 +19,7 @@ export interface CodexRateLimitObservation {
 
 export interface UsageMonthSummary {
   periodStart: string;
-  apiEquivalentCostMicros: number;
+  apiEquivalentCostMicros: number | null;
   subscriptionPriceMicros: number | null;
   subscriptionPriceSource: "configured" | "unavailable";
   paybackRatio: number | null;

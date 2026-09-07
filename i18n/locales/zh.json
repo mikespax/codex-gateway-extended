@@ -878,6 +878,7 @@
     "weeklyHistoryNote": "按 UTC 周一至周日，从 Gateway 记录的 turn 汇总",
     "turns": "{count} 个 turn",
     "periodDetail": "{turns} 个 turn · {priced} 个已计价 · {tokens} 个 token",
+    "periodUnavailable": "这些 turn 的 token 用量不可用",
     "noData": "还没有记录到已完成的 Gateway turn",
     "disclaimer": "配额百分比是供应商报告的账号观察值。在两次快照之间，其他主机或 Codex 客户端的活动也可能包含在内。除非独立 Codex 安装使用此 Gateway，否则它们不会显示在这里。",
     "sevenDay": "7 天",
