@@ -30,6 +30,21 @@ const shortWindow = computed(() =>
     (window) => window.windowDurationMins !== null && window.windowDurationMins < 10_080,
   ),
 );
+const historicalImportLabel = computed(() => {
+  const imported = dashboard.value?.historicalImport;
+  if (imported === null || imported === undefined) return null;
+  const coverage =
+    imported.coverageStart === null || imported.coverageEnd === null
+      ? t("usage.coverageUnknown")
+      : `${new Date(imported.coverageStart).toLocaleDateString(locale.value)}–${new Date(
+          imported.coverageEnd,
+        ).toLocaleDateString(locale.value)}`;
+  return t("usage.historicalImport", {
+    records: imported.recordCount,
+    hosts: imported.sourceHosts.join(", "),
+    coverage,
+  });
+});
 const updatedLabel = computed(() => {
   const generatedAt = dashboard.value?.generatedAt;
   return generatedAt === undefined
@@ -103,14 +118,18 @@ function formatPeriod(period: UsagePeriodSummary, kind: "month" | "week") {
 }
 
 function barWidth(period: UsagePeriodSummary, max: number) {
-  if (period.pricedTurnCount <= 0 || period.apiEquivalentCostMicros <= 0 || max <= 0) return "0%";
+  if (!hasPricedData(period) || period.apiEquivalentCostMicros <= 0 || max <= 0) return "0%";
   return `${Math.max(4, Math.round((period.apiEquivalentCostMicros / max) * 100))}%`;
 }
 
 function periodCost(period: UsagePeriodSummary) {
-  return period.pricedTurnCount === 0
+  return !hasPricedData(period)
     ? t("usage.unavailable")
     : formatUsd(period.apiEquivalentCostMicros);
+}
+
+function hasPricedData(period: UsagePeriodSummary) {
+  return period.pricedTurnCount > 0 || period.historicalPricedRecordCount > 0;
 }
 
 function maxCost(periods: UsagePeriodSummary[]) {
@@ -266,6 +285,13 @@ function quotaTone(window: UsageQuotaSnapshot) {
           </article>
         </section>
 
+        <p
+          v-if="historicalImportLabel !== null"
+          class="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs leading-relaxed text-ink-muted"
+        >
+          {{ historicalImportLabel }}
+        </p>
+
         <section class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <article class="rounded-2xl border border-hairline bg-surface p-5 sm:p-6">
             <div class="flex flex-wrap items-baseline justify-between gap-2">
@@ -274,8 +300,9 @@ function quotaTone(window: UsageQuotaSnapshot) {
                 <p class="mt-1 text-xs text-ink-muted">{{ $t("usage.apiEquivalentNote") }}</p>
               </div>
               <span class="text-xs text-ink-muted">{{
-                $t("usage.turns", {
-                  count: monthlyRows.reduce((sum, row) => sum + row.turnCount, 0),
+                $t("usage.activitySummary", {
+                  gateway: monthlyRows.reduce((sum, row) => sum + row.turnCount, 0),
+                  historical: monthlyRows.reduce((sum, row) => sum + row.historicalRecordCount, 0),
                 })
               }}</span>
             </div>
@@ -289,7 +316,7 @@ function quotaTone(window: UsageQuotaSnapshot) {
                   <span class="tabular-nums text-ink-muted">{{ periodCost(row) }}</span>
                 </div>
                 <div
-                  v-if="row.pricedTurnCount > 0"
+                  v-if="hasPricedData(row)"
                   class="h-2 overflow-hidden rounded-full bg-canvas-soft"
                   :aria-label="periodCost(row)"
                 >
@@ -307,8 +334,8 @@ function quotaTone(window: UsageQuotaSnapshot) {
                 <p class="text-[0.6875rem] text-ink-muted">
                   {{
                     $t("usage.periodDetail", {
-                      turns: row.turnCount,
-                      priced: row.pricedTurnCount,
+                      gatewayTurns: row.turnCount,
+                      historicalRecords: row.historicalRecordCount,
                       tokens: formatTokens(row.totalTokens),
                     })
                   }}
@@ -337,7 +364,7 @@ function quotaTone(window: UsageQuotaSnapshot) {
                   <span class="tabular-nums text-ink-muted">{{ periodCost(row) }}</span>
                 </div>
                 <div
-                  v-if="row.pricedTurnCount > 0"
+                  v-if="hasPricedData(row)"
                   class="h-2 overflow-hidden rounded-full bg-canvas-soft"
                   :aria-label="periodCost(row)"
                 >
@@ -355,8 +382,8 @@ function quotaTone(window: UsageQuotaSnapshot) {
                 <p class="text-[0.6875rem] text-ink-muted">
                   {{
                     $t("usage.periodDetail", {
-                      turns: row.turnCount,
-                      priced: row.pricedTurnCount,
+                      gatewayTurns: row.turnCount,
+                      historicalRecords: row.historicalRecordCount,
                       tokens: formatTokens(row.totalTokens),
                     })
                   }}

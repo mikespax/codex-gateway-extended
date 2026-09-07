@@ -20,6 +20,11 @@ export interface CodexRateLimitObservation {
 export interface UsageMonthSummary {
   periodStart: string;
   apiEquivalentCostMicros: number | null;
+  gatewayApiEquivalentCostMicros: number | null;
+  historicalApiEquivalentCostMicros: number | null;
+  gatewayTurnCount: number;
+  historicalRecordCount: number;
+  historicalTotalTokens: number;
   subscriptionPriceMicros: number | null;
   subscriptionPriceSource: "configured" | "unavailable";
   paybackRatio: number | null;
@@ -30,8 +35,23 @@ export interface UsagePeriodSummary {
   periodEnd: string;
   turnCount: number;
   pricedTurnCount: number;
+  historicalRecordCount: number;
+  historicalPricedRecordCount: number;
   totalTokens: number;
   apiEquivalentCostMicros: number;
+}
+
+export type UsageHistoricalSource = "ccusage_codex";
+
+export interface UsageHistoricalImportSummary {
+  source: UsageHistoricalSource;
+  recordCount: number;
+  totalTokens: number;
+  apiEquivalentCostMicros: number | null;
+  coverageStart: string | null;
+  coverageEnd: string | null;
+  importedAt: number | null;
+  sourceHosts: string[];
 }
 
 export interface UsageQuotaSnapshot {
@@ -54,6 +74,7 @@ export interface UsageDashboardSummary {
   thisMonth: UsageMonthSummary;
   monthly: UsagePeriodSummary[];
   weekly: UsagePeriodSummary[];
+  historicalImport: UsageHistoricalImportSummary | null;
   quotaWindows: UsageQuotaSnapshot[];
   liveHostCount: number;
   failedHostCount: number;

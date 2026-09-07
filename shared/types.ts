@@ -47,6 +47,8 @@ export type {
   QuotaAttributionConfidence,
   ThreadTurnUsageSummary,
   UsageDashboardSummary,
+  UsageHistoricalImportSummary,
+  UsageHistoricalSource,
   UsageMonthSummary,
   UsagePeriodSummary,
   UsageQuotaSnapshot,
