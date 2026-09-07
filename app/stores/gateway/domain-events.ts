@@ -8,7 +8,6 @@ import type {
   ServerNotification,
   ThreadSettingsState,
   ThreadTokenUsageState,
-  ThreadTurnUsageSummary,
   TerminalSessionSnapshot,
   GatewayConfig,
   HostGpuProcessSnapshot,
@@ -117,10 +116,6 @@ export type GatewayDomainEventMap = {
     hostId: number;
     threadId: string;
     tokenUsage: ThreadTokenUsageState;
-  };
-  "thread-turn-usage-detected": {
-    hostId: number;
-    usage: ThreadTurnUsageSummary;
   };
   "history-item-upsert": { hostId: number; threadId: string; item: ThreadHistoryItem };
   "history-agent-delta": { hostId: number; threadId: string; params: AppServerEventParams };

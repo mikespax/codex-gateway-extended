@@ -3,7 +3,6 @@ import { computed } from "vue";
 import type { ThreadTimelineItem } from "~~/shared/types";
 import { componentForThreadItem } from "@/utils/thread-item-registry";
 import type { DisplayedTurnTiming } from "@/utils/turn-timing";
-import type { ThreadTurnUsageSummary } from "~~/shared/types";
 
 const props = defineProps<{
   item: ThreadTimelineItem;
@@ -13,7 +12,6 @@ const props = defineProps<{
   userMessageVariant?: "normal" | "steer";
   showInlineImages?: boolean;
   turnTiming?: DisplayedTurnTiming | null;
-  turnUsage?: ThreadTurnUsageSummary | null;
   agentActionsAvailable?: boolean;
   sentAt?: number | string | null;
   turnIsActive?: boolean;
@@ -40,7 +38,6 @@ const itemPresentationProps = computed(() => {
     :variant="userMessageVariant"
     :show-inline-images="props.showInlineImages === true"
     :turn-timing="item.type === 'agentMessage' ? turnTiming : undefined"
-    :turn-usage="item.type === 'agentMessage' ? turnUsage : undefined"
     :agent-actions-available="item.type === 'agentMessage' && agentActionsAvailable"
     :sent-at="item.type === 'userMessage' || item.type === 'agentMessage' ? sentAt : undefined"
   />
