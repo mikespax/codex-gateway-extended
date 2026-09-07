@@ -87,8 +87,9 @@ function formatTokens(tokens: number) {
   }).format(tokens);
 }
 
-function formatRatio(ratio: number | null) {
-  return ratio === null ? t("usage.notConfigured") : `${ratio.toFixed(2)}x`;
+function formatRatio(ratio: number | null, subscriptionPriceMicros: number | null) {
+  if (ratio !== null) return `${ratio.toFixed(2)}x`;
+  return subscriptionPriceMicros === null ? t("usage.notConfigured") : t("usage.unavailable");
 }
 
 function formatPeriod(period: UsagePeriodSummary, kind: "month" | "week") {
@@ -210,7 +211,12 @@ function quotaTone(window: UsageQuotaSnapshot) {
               {{ $t("usage.subscriptionPayback") }}
             </p>
             <p class="mt-2 text-2xl font-semibold tabular-nums">
-              {{ formatRatio(dashboard.thisMonth.paybackRatio) }}
+              {{
+                formatRatio(
+                  dashboard.thisMonth.paybackRatio,
+                  dashboard.thisMonth.subscriptionPriceMicros,
+                )
+              }}
             </p>
             <p class="mt-1 text-xs text-ink-muted">
               <template v-if="dashboard.thisMonth.subscriptionPriceMicros !== null">
