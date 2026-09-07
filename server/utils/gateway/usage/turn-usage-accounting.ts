@@ -23,6 +23,8 @@ export type RateLimitsResolver = () => Promise<unknown>;
 
 export interface TurnUsageObservationOptions {
   resolveRateLimits?: RateLimitsResolver;
+  resolveThreadUsage?: RateLimitsResolver;
+  onSummary?: (summary: ThreadTurnUsageSummary) => void;
   protocolVersion?: string | null;
   protocolSchemaHash?: string | null;
 }
@@ -39,6 +41,10 @@ interface TurnState {
   cumulativeAfter: TokenUsageBreakdown | null;
   quotaBefore: Promise<CodexRateLimitObservation | null>;
   resolveRateLimits?: RateLimitsResolver;
+  threadUsageBefore: Promise<ProviderThreadUsage | null>;
+  resolveThreadUsage?: RateLimitsResolver;
+  providerReconciliationScheduled: boolean;
+  onSummary?: (summary: ThreadTurnUsageSummary) => void;
   protocolVersion: string | null;
   protocolSchemaHash: string | null;
   finalized: boolean;
@@ -152,6 +158,7 @@ class TurnUsageAccounting {
         existing.cumulativeBefore = latestCumulativeUsage(hostId, threadId, params.__eventId);
         existing.quotaBefore = readQuota(hostId, options.resolveRateLimits);
         existing.resolveRateLimits = options.resolveRateLimits ?? existing.resolveRateLimits;
+        existing.threadUsageBefore = readThreadUsage(existing.resolveThreadUsage);
       }
       return existing;
     }
@@ -169,6 +176,10 @@ class TurnUsageAccounting {
       cumulativeAfter: null,
       quotaBefore: Promise.resolve(null),
       resolveRateLimits: options.resolveRateLimits,
+      threadUsageBefore: Promise.resolve(null),
+      resolveThreadUsage: options.resolveThreadUsage,
+      providerReconciliationScheduled: false,
+      onSummary: options.onSummary,
       protocolVersion: options.protocolVersion ?? null,
       protocolSchemaHash: options.protocolSchemaHash ?? null,
       finalized: false,
@@ -178,6 +189,7 @@ class TurnUsageAccounting {
     if (params.__turnStarted === true) {
       state.cumulativeBefore = latestCumulativeUsage(hostId, threadId, params.__eventId);
       state.quotaBefore = readQuota(hostId, options.resolveRateLimits);
+      state.threadUsageBefore = readThreadUsage(options.resolveThreadUsage);
     }
     return state;
   }
@@ -217,6 +229,9 @@ class TurnUsageAccounting {
     state.protocolSchemaHash = options.protocolSchemaHash ?? state.protocolSchemaHash;
     if (options.resolveRateLimits !== undefined)
       state.resolveRateLimits = options.resolveRateLimits;
+    if (options.resolveThreadUsage !== undefined)
+      state.resolveThreadUsage = options.resolveThreadUsage;
+    if (options.onSummary !== undefined) state.onSummary = options.onSummary;
   }
 
   private async recordRawResponse(
@@ -269,8 +284,17 @@ class TurnUsageAccounting {
     const effectiveUsage = aggregate ?? this.recordCumulativeFallback(userId, state);
     const terminalStatus = terminalStatusFromParams(params);
     const quota = quotaResult(quotaBefore, quotaAfter);
-    const summary = buildSummary(state, effectiveUsage, terminalStatus, quota);
+    const providerDelta = effectiveUsage === null ? await this.readProviderDelta(state) : null;
+    const summary = buildSummary(
+      state,
+      effectiveUsage,
+      terminalStatus,
+      quota,
+      Date.now(),
+      providerDelta,
+    );
     turnUsageRepository.saveTurn(userId, summary);
+    if (providerDelta === null) this.scheduleProviderReconciliation(userId, state);
     return summary;
   }
 
@@ -283,12 +307,7 @@ class TurnUsageAccounting {
       return turnUsageRepository.aggregateTurn(userId, state.threadId, state.turnId);
     }
     const usage = subtractUsage(finalUsage, state.cumulativeBefore);
-    const request = requestFromUsage(
-      state,
-      usage,
-      responseId,
-      "cumulative_delta",
-    );
+    const request = requestFromUsage(state, usage, responseId, "cumulative_delta");
     turnUsageRepository.recordRequest(userId, request);
     return turnUsageRepository.aggregateTurn(userId, state.threadId, state.turnId);
   }
@@ -310,6 +329,47 @@ class TurnUsageAccounting {
       current.observedAt,
     );
     turnUsageRepository.saveTurn(userId, updated);
+    state.onSummary?.(updated);
+  }
+
+  private async readProviderDelta(state: TurnState) {
+    if (state.resolveThreadUsage === undefined) return null;
+    const before = await state.threadUsageBefore;
+    const after = await readThreadUsage(state.resolveThreadUsage);
+    return providerThreadUsageDelta(before, after, state);
+  }
+
+  private scheduleProviderReconciliation(userId: number, state: TurnState) {
+    if (state.providerReconciliationScheduled || state.resolveThreadUsage === undefined) return;
+    state.providerReconciliationScheduled = true;
+    for (const delayMs of [2_000, 10_000, 30_000]) {
+      setTimeout(() => {
+        void this.reconcileProviderUsage(userId, state);
+      }, delayMs);
+    }
+  }
+
+  private async reconcileProviderUsage(userId: number, state: TurnState) {
+    if (!state.finalized) return;
+    const current = turnUsageRepository.getTurn(userId, state.threadId, state.turnId);
+    if (current === null || current.usageSource !== "unavailable") return;
+    const providerDelta = await this.readProviderDelta(state);
+    if (providerDelta === null) return;
+    const updated = buildSummary(
+      state,
+      providerDelta.aggregate,
+      current.terminalStatus,
+      {
+        before: current.quotaBefore,
+        after: current.quotaAfter,
+        deltas: current.quotaDeltas,
+        confidence: current.quotaAttributionConfidence,
+      },
+      current.observedAt,
+      providerDelta,
+    );
+    turnUsageRepository.saveTurn(userId, updated);
+    state.onSummary?.(updated);
   }
 }
 
@@ -319,29 +379,36 @@ function buildSummary(
   terminalStatus: ThreadTurnUsageSummary["terminalStatus"],
   quota: QuotaResult,
   observedAt = Date.now(),
+  providerDelta: ProviderThreadUsageDelta | null = null,
 ): ThreadTurnUsageSummary {
   const usage = aggregate?.usage ?? zeroUsage();
   const pricing =
-    aggregate === null
+    aggregate === null || providerDelta !== null
       ? { costMicros: null, pricingVersion: null, completeness: "unknown" as const }
       : estimateApiEquivalentCost({
           model: state.model ?? aggregate.model,
           serviceTier: state.serviceTier ?? aggregate.serviceTier,
           usage,
         });
-  const costMicros = aggregate?.apiEquivalentCostMicros ?? pricing.costMicros;
-  const completeness = aggregate?.pricingCompleteness ?? pricing.completeness;
+  const costMicros =
+    aggregate?.apiEquivalentCostMicros ??
+    providerDelta?.apiEquivalentCostMicros ??
+    pricing.costMicros;
+  const completeness =
+    aggregate?.pricingCompleteness ?? providerDelta?.pricingCompleteness ?? pricing.completeness;
   return {
     hostId: state.hostId,
     threadId: state.threadId,
     turnId: state.turnId,
     usageScope: "direct_turn",
     usageSource:
-      aggregate === null
-        ? "unavailable"
-        : aggregate.requestCount > 0
-          ? sourceForAggregate(state, aggregate)
-          : "unavailable",
+      providerDelta !== null
+        ? "provider_thread_delta"
+        : aggregate === null
+          ? "unavailable"
+          : aggregate.requestCount > 0
+            ? sourceForAggregate(state, aggregate)
+            : "unavailable",
     model: state.model ?? aggregate?.model ?? null,
     reasoningEffort: state.reasoningEffort ?? aggregate?.reasoningEffort ?? null,
     serviceTier: state.serviceTier ?? aggregate?.serviceTier ?? null,
@@ -352,10 +419,11 @@ function buildSummary(
     outputTokens: usage.outputTokens,
     reasoningOutputTokens: usage.reasoningOutputTokens,
     apiEquivalentCostMicros: costMicros,
-    pricingVersion: aggregate?.pricingVersion ?? pricing.pricingVersion,
+    pricingVersion:
+      aggregate?.pricingVersion ?? providerDelta?.pricingVersion ?? pricing.pricingVersion,
     pricingCompleteness: completeness,
-    providerEstimatedCreditsMicros: null,
-    providerEstimatedUsdMicros: null,
+    providerEstimatedCreditsMicros: providerDelta?.estimatedUsageCreditsMicros ?? null,
+    providerEstimatedUsdMicros: providerDelta?.estimatedUsageUsdMicros ?? null,
     quotaBefore: quota.before,
     quotaAfter: quota.after,
     quotaDeltas: quota.deltas,
@@ -416,6 +484,271 @@ function readQuota(hostId: number, resolver: RateLimitsResolver | undefined) {
     .then(() => resolver())
     .then((value) => codexRateLimitObservationFromResponse(hostId, value))
     .catch(() => null);
+}
+
+function readThreadUsage(resolver: RateLimitsResolver | undefined) {
+  if (resolver === undefined) return Promise.resolve(null);
+  return Promise.resolve()
+    .then(() => resolver())
+    .then(normalizeProviderThreadUsage)
+    .catch(() => null);
+}
+
+interface ProviderThreadUsage {
+  estimatedUsageCreditsMicros: number;
+  estimatedUsageUsdMicros: number | null;
+  groups: ProviderThreadUsageGroup[];
+}
+
+interface ProviderThreadUsageGroup {
+  model: string | null;
+  reasoningEffort: string | null;
+  speed: string | null;
+  estimatedUsageCreditsMicros: number;
+  netNewInputTokens: number | null;
+  cachedInputTokens: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+}
+
+interface ProviderThreadUsageDelta {
+  aggregate: AggregatedTurnUsage;
+  estimatedUsageCreditsMicros: number | null;
+  estimatedUsageUsdMicros: number | null;
+  apiEquivalentCostMicros: number | null;
+  pricingVersion: string | null;
+  pricingCompleteness: "complete" | "partial" | "unknown";
+}
+
+function normalizeProviderThreadUsage(value: unknown): ProviderThreadUsage | null {
+  const response = recordFromUnknown(value);
+  const raw = recordFromUnknown(response?.threadUsage ?? response?.thread_usage);
+  if (raw === null) return null;
+  const estimatedUsageCreditsMicros = nonNegativeIntegerOrNull(
+    raw.estimatedUsageCreditsMicros ?? raw.estimated_usage_credits_micros,
+  );
+  if (estimatedUsageCreditsMicros === null) return null;
+  const estimatedUsageUsdMicros = nonNegativeIntegerOrNull(
+    raw.estimatedUsageUsdMicros ?? raw.estimated_usage_usd_micros,
+  );
+  const groups = Array.isArray(raw.groups)
+    ? raw.groups
+        .map(normalizeProviderThreadUsageGroup)
+        .filter((group): group is ProviderThreadUsageGroup => group !== null)
+    : [];
+  return { estimatedUsageCreditsMicros, estimatedUsageUsdMicros, groups };
+}
+
+function normalizeProviderThreadUsageGroup(value: unknown): ProviderThreadUsageGroup | null {
+  const record = recordFromUnknown(value);
+  if (record === null) return null;
+  const estimatedUsageCreditsMicros = nonNegativeIntegerOrNull(
+    record.estimatedUsageCreditsMicros ?? record.estimated_usage_credits_micros,
+  );
+  if (estimatedUsageCreditsMicros === null) return null;
+  return {
+    model: stringOrNull(record.model),
+    reasoningEffort: stringOrNull(record.reasoningEffort ?? record.reasoning_effort),
+    speed: stringOrNull(record.speed),
+    estimatedUsageCreditsMicros,
+    netNewInputTokens: nonNegativeIntegerOrNull(
+      record.netNewInputTokens ?? record.net_new_input_tokens,
+    ),
+    cachedInputTokens: nonNegativeIntegerOrNull(
+      record.cachedInputTokens ?? record.cached_input_tokens,
+    ),
+    inputTokens: nonNegativeIntegerOrNull(record.inputTokens ?? record.input_tokens),
+    outputTokens: nonNegativeIntegerOrNull(record.outputTokens ?? record.output_tokens),
+    totalTokens: nonNegativeIntegerOrNull(record.totalTokens ?? record.total_tokens),
+  };
+}
+
+function providerThreadUsageDelta(
+  before: ProviderThreadUsage | null,
+  after: ProviderThreadUsage | null,
+  state: TurnState,
+): ProviderThreadUsageDelta | null {
+  if (before === null || after === null) return null;
+  if (after.estimatedUsageCreditsMicros < before.estimatedUsageCreditsMicros) return null;
+  if (
+    before.estimatedUsageUsdMicros !== null &&
+    after.estimatedUsageUsdMicros !== null &&
+    after.estimatedUsageUsdMicros < before.estimatedUsageUsdMicros
+  ) {
+    return null;
+  }
+
+  const beforeGroups = new Map(before.groups.map((group) => [providerGroupKey(group), group]));
+  const groups = after.groups
+    .map((group) => providerGroupDelta(group, beforeGroups.get(providerGroupKey(group)), state))
+    .filter((group): group is ProviderGroupDelta => group !== null);
+  const estimatedUsageCreditsMicros = difference(
+    after.estimatedUsageCreditsMicros,
+    before.estimatedUsageCreditsMicros,
+  );
+  const estimatedUsageUsdMicros =
+    before.estimatedUsageUsdMicros !== null && after.estimatedUsageUsdMicros !== null
+      ? difference(after.estimatedUsageUsdMicros, before.estimatedUsageUsdMicros)
+      : null;
+  const groupUsage = groups.map((group) => group.usage);
+  const hasTokenUsage = groupUsage.some((usage) => usage.totalTokens > 0);
+  if (estimatedUsageCreditsMicros === 0 && (estimatedUsageUsdMicros ?? 0) === 0 && !hasTokenUsage) {
+    return null;
+  }
+
+  let apiEquivalentCostMicros = 0;
+  let pricedGroupCount = 0;
+  let pricingVersion: string | null = null;
+  let pricingIncomplete = false;
+  for (const group of groups) {
+    if (!group.hasTokenData || !group.hasTokenDelta) {
+      pricingIncomplete = true;
+      continue;
+    }
+    const pricing = estimateApiEquivalentCost({
+      model: normalizePricingModel(group.model ?? state.model),
+      serviceTier: serviceTierFromProviderSpeed(group.speed) ?? state.serviceTier,
+      usage: group.usage,
+    });
+    if (pricing.costMicros === null) {
+      pricingIncomplete = true;
+      continue;
+    }
+    apiEquivalentCostMicros += pricing.costMicros;
+    pricedGroupCount += 1;
+    pricingVersion = pricing.pricingVersion ?? pricingVersion;
+    if (pricing.completeness !== "complete") pricingIncomplete = true;
+  }
+  if (groups.some((group) => !group.hasTokenData || !group.hasTokenDelta)) {
+    pricingIncomplete = true;
+  }
+  const pricingCompleteness =
+    pricedGroupCount === 0 ? "unknown" : pricingIncomplete ? "partial" : "complete";
+  const aggregateUsage = groupUsage.reduce<TokenUsageBreakdown>(
+    (total, usage) => ({
+      totalTokens: total.totalTokens + usage.totalTokens,
+      inputTokens: total.inputTokens + usage.inputTokens,
+      cachedInputTokens: total.cachedInputTokens + usage.cachedInputTokens,
+      cacheWriteInputTokens: total.cacheWriteInputTokens + usage.cacheWriteInputTokens,
+      outputTokens: total.outputTokens + usage.outputTokens,
+      reasoningOutputTokens: total.reasoningOutputTokens + usage.reasoningOutputTokens,
+    }),
+    zeroUsage(),
+  );
+  return {
+    aggregate: {
+      usage: aggregateUsage,
+      model: latestProviderString(groups, "model") ?? state.model,
+      reasoningEffort: latestProviderString(groups, "reasoningEffort") ?? state.reasoningEffort,
+      serviceTier: latestProviderServiceTier(groups) ?? state.serviceTier,
+      apiEquivalentCostMicros: pricedGroupCount === 0 ? null : apiEquivalentCostMicros,
+      pricingVersion,
+      pricingCompleteness,
+      requestCount: 1,
+    },
+    estimatedUsageCreditsMicros,
+    estimatedUsageUsdMicros,
+    apiEquivalentCostMicros: pricedGroupCount === 0 ? null : apiEquivalentCostMicros,
+    pricingVersion,
+    pricingCompleteness,
+  };
+}
+
+interface ProviderGroupDelta {
+  model: string | null;
+  reasoningEffort: string | null;
+  speed: string | null;
+  usage: TokenUsageBreakdown;
+  hasTokenData: boolean;
+  hasTokenDelta: boolean;
+}
+
+function providerGroupDelta(
+  after: ProviderThreadUsageGroup,
+  before: ProviderThreadUsageGroup | undefined,
+  state: TurnState,
+): ProviderGroupDelta | null {
+  const groupCreditDelta = difference(
+    after.estimatedUsageCreditsMicros,
+    before?.estimatedUsageCreditsMicros ?? 0,
+  );
+  const usage = {
+    totalTokens: providerFieldDelta(after.totalTokens, before?.totalTokens),
+    inputTokens: providerFieldDelta(after.inputTokens, before?.inputTokens),
+    cachedInputTokens: providerFieldDelta(after.cachedInputTokens, before?.cachedInputTokens),
+    cacheWriteInputTokens: 0,
+    outputTokens: providerFieldDelta(after.outputTokens, before?.outputTokens),
+    reasoningOutputTokens: 0,
+  } satisfies TokenUsageBreakdown;
+  const hasTokenData =
+    after.totalTokens !== null ||
+    after.inputTokens !== null ||
+    after.netNewInputTokens !== null ||
+    after.cachedInputTokens !== null ||
+    after.outputTokens !== null;
+  if (usage.totalTokens === 0 && groupCreditDelta === 0 && !hasTokenData) return null;
+  if (usage.inputTokens === 0 && after.inputTokens === null) {
+    usage.inputTokens =
+      providerFieldDelta(after.netNewInputTokens, before?.netNewInputTokens) +
+      usage.cachedInputTokens;
+  }
+  if (usage.totalTokens === 0 && (after.totalTokens === null || before?.totalTokens !== null)) {
+    usage.totalTokens = usage.inputTokens + usage.outputTokens;
+  }
+  return {
+    model: stringOrNull(after.model) ?? stringOrNull(before?.model) ?? state.model,
+    reasoningEffort:
+      stringOrNull(after.reasoningEffort) ??
+      stringOrNull(before?.reasoningEffort) ??
+      state.reasoningEffort,
+    speed: stringOrNull(after.speed) ?? stringOrNull(before?.speed),
+    usage,
+    hasTokenData,
+    hasTokenDelta:
+      usage.totalTokens > 0 ||
+      usage.inputTokens > 0 ||
+      usage.cachedInputTokens > 0 ||
+      usage.outputTokens > 0,
+  };
+}
+
+function providerFieldDelta(after: number | null, before: number | null | undefined) {
+  if (after === null) return 0;
+  return before === null || before === undefined ? after : Math.max(0, after - before);
+}
+
+function providerGroupKey(group: ProviderThreadUsageGroup | ProviderGroupDelta) {
+  return [group.model ?? "", group.reasoningEffort ?? "", group.speed ?? ""].join("\u001f");
+}
+
+function latestProviderString(groups: ProviderGroupDelta[], key: "model" | "reasoningEffort") {
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const value = groups[index]?.[key];
+    if (value !== null && value !== undefined && value.trim() !== "") return value;
+  }
+  return null;
+}
+
+function latestProviderServiceTier(groups: ProviderGroupDelta[]) {
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const value = serviceTierFromProviderSpeed(groups[index]?.speed);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function serviceTierFromProviderSpeed(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "fast" || normalized === "priority") return "fast";
+  if (normalized === "standard") return "standard";
+  return null;
+}
+
+function nonNegativeIntegerOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue >= 0 ? Math.floor(numberValue) : null;
 }
 
 interface QuotaResult {

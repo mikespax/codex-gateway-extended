@@ -8,6 +8,7 @@ export interface ThreadNotificationResolvers {
   resolveGoal: ThreadGoalResolver;
   resolveThread: ThreadMetadataResolver;
   resolveRateLimits: RateLimitsResolver;
+  resolveThreadUsage: RateLimitsResolver;
   protocolVersion: string | null;
   protocolSchemaHash: string | null;
 }
@@ -29,6 +30,8 @@ export function createThreadNotificationResolvers(
       ),
     resolveRateLimits: () =>
       client.request("account/rateLimits/read", undefined, NOTIFICATION_INSPECTION_TIMEOUT_MS),
+    resolveThreadUsage: () =>
+      client.request("account/usage/read", { threadId }, NOTIFICATION_INSPECTION_TIMEOUT_MS),
     protocolVersion: client.protocolVersion(),
     protocolSchemaHash: client.protocolSchemaHash(),
   };

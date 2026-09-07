@@ -1,4 +1,4 @@
-import type { GatewayEvent, RpcEnvelope } from "~~/shared/types";
+import type { GatewayEvent, RpcEnvelope, ThreadTurnUsageSummary } from "~~/shared/types";
 import { parseRpcEnvelope } from "~~/shared/runtime/app-server";
 import { gatewayEventStore } from "../state/gateway-events";
 import { currentGatewayUserId } from "../state/memory";
@@ -18,6 +18,7 @@ export type ThreadGoalResolver = () => Promise<unknown>;
 export type ThreadMetadataResolver = () => Promise<unknown>;
 export interface ThreadRuntimeAccountingOptions {
   resolveRateLimits?: RateLimitsResolver;
+  resolveThreadUsage?: RateLimitsResolver;
   protocolVersion?: string | null;
   protocolSchemaHash?: string | null;
 }
@@ -44,8 +45,17 @@ class ThreadRuntimeEventBus {
     this.publish(event);
     this.publishRuntimeStatus(event);
     dispatchThreadRuntimeNotification(event, options);
+    const accountingOptions = {
+      ...options,
+      onSummary: (usage: ThreadTurnUsageSummary) => {
+        this.record(hostId, threadId, "gateway/usage/turn", {
+          method: "gateway/usage/turn",
+          params: { threadId, usage },
+        });
+      },
+    };
     void turnUsageAccounting
-      .observeEvent(event, options)
+      .observeEvent(event, accountingOptions)
       .then((usage) => {
         if (usage === null) return;
         this.record(hostId, threadId, "gateway/usage/turn", {
