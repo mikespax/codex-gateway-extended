@@ -386,10 +386,10 @@ function dismissMenu() {
   top: 0.75rem;
   left: 0.25rem;
   z-index: 1;
-  width: 2px;
+  width: 4px;
   height: 1.5rem;
   border-radius: 999px;
-  background: #fff;
+  background-color: #fff;
   content: "";
   pointer-events: none;
   animation: composer-caret-blink 1.05s steps(1, end) infinite;
@@ -401,7 +401,7 @@ function dismissMenu() {
   }
   49%,
   100% {
-    opacity: 0.15;
+    opacity: 0.45;
   }
 }
 .composer-editor:focus-within .cm-editor {
@@ -429,7 +429,7 @@ function dismissMenu() {
 }
 .composer-editor .cm-cursor,
 .composer-editor .cm-dropCursor {
-  border-left-color: #fff;
+  border-left: 2px solid #fff;
 }
 .composer-editor .cm-focused {
   outline: none;
