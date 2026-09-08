@@ -106,8 +106,15 @@ export function sidebarOverviewForThread(input: {
 }
 
 export function threadGoalSummaryFromThread(thread: Pick<AppServerThread, "turns">) {
-  for (const turn of [...thread.turns].reverse()) {
-    for (const item of [...turn.items].reverse()) {
+  return threadGoalSummaryFromTurns(thread.turns);
+}
+
+/** Extract the latest goal from a small history page used by the unselected sidebar rows. */
+export function threadGoalSummaryFromTurns(
+  turns: ReadonlyArray<{ items?: ThreadHistoryItem[] | undefined }>,
+) {
+  for (const turn of [...turns].reverse()) {
+    for (const item of [...(turn.items ?? [])].reverse()) {
       if (item.type !== "threadGoal") continue;
       const objective = typeof item.objective === "string" ? item.objective.trim() : "";
       const status = threadGoalStatus(item.status);
