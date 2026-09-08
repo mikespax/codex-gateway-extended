@@ -15,6 +15,8 @@ const estimatedItemHeights: Partial<Record<ThreadTimelineItem["type"], number>> 
   agentMessage: 144,
   reasoning: 128,
   userMessage: 160,
+  imageView: 220,
+  imageGeneration: 220,
 };
 
 export type ThreadTimelineRow =
@@ -69,7 +71,8 @@ export interface ThreadTimelineTurnState {
 
 // Every visible entry is a direct row of the Agent timeline. Do not wrap intermediate items in a
 // second virtualizer: two height caches sharing one scroll element can leave stale blank space on
-// WebKit. Collapsing is represented only by omitting intermediate item rows from this flat model.
+// WebKit. Collapsing omits routine intermediate rows from this flat model, while preserving
+// screenshot rows as small inline evidence previews.
 export function buildThreadTimelineRows(input: {
   threadId: string | null;
   turns: ThreadTimelineTurnState[];
@@ -136,6 +139,14 @@ export function buildThreadTimelineRows(input: {
             footer: true,
           });
         }
+      } else {
+        // Screenshots are useful evidence, not routine implementation chatter. Keep their
+        // compact inline preview visible even while the surrounding intermediate steps stay
+        // collapsed behind the working line.
+        const inlineImages = intermediatePresentation.items.filter(
+          (item) => item.type === "imageView",
+        );
+        appendItemRows(rows, input.threadId, turn, "intermediate", inlineImages, sections);
       }
     });
 
@@ -249,7 +260,6 @@ function isRoutineLiveActivity(item: ThreadTimelineItem) {
     "dynamicToolCall",
     "enteredReviewMode",
     "exitedReviewMode",
-    "imageView",
     "mcpToolCall",
     "sleep",
     "subAgentActivity",
@@ -303,6 +313,7 @@ function intermediateItemPreview(item: ThreadTimelineItem) {
       ? item.query.replace(/\s+/g, " ").trim()
       : "Web search";
   }
+  if (item.type === "imageView") return "Screenshot available";
   const text = "text" in item && typeof item.text === "string" ? item.text : "";
   return text.replace(/\s+/g, " ").trim() || item.type;
 }
