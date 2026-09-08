@@ -24,7 +24,10 @@ import NewThreadDialog from "./NewThreadDialog.vue";
 import HostTree from "./host-tree/HostTree.vue";
 import PinnedThreadList from "./thread-list/PinnedThreadList.vue";
 import RecentThreadList from "./thread-list/RecentThreadList.vue";
-import { useSidebarActivityRefresh } from "./thread-list/useSidebarActivityRefresh";
+import {
+  useSidebarActivityRefresh,
+  type SidebarActivityTarget,
+} from "./thread-list/useSidebarActivityRefresh";
 import ThreadRenameDialog from "./thread-list/ThreadRenameDialog.vue";
 import ThreadMoveDialog from "./thread-list/ThreadMoveDialog.vue";
 import SidebarScrollArea from "./SidebarScrollArea.vue";
@@ -127,13 +130,14 @@ const activePinnedThreads = computed(() =>
 
 const sidebarActivityTargets = computed(() => {
   const seen = new Set<string>();
-  const result: Array<{ hostId: number; threadId: string }> = [];
+  const result: SidebarActivityTarget[] = [];
   for (const thread of [...pinnedThreads.value, ...recentThreads.value]) {
     const threadId = String(thread.threadId);
     const key = `${thread.hostId}:${threadId}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    result.push({ hostId: thread.hostId, threadId });
+    const summary = threadActivity.summariesByKey[key];
+    result.push({ hostId: thread.hostId, threadId, path: summary?.path ?? null });
   }
   return result;
 });
@@ -166,6 +170,7 @@ const hostTreeController = computed<HostTreeController>(() => ({
   threadRuntimeStatus: sidebarTree.threadRuntimeStatus,
   threadCompletionAttention: sidebarTree.threadCompletionAttention,
   threadActivityOverview: sidebarTree.threadActivityOverview,
+  threadStorageBytes: sidebarTree.threadStorageBytes,
   hostResourceUsage: usageForHost,
   canMoveThreadToHost: hosts.value.length > 1,
   moveThread: requestThreadMove,

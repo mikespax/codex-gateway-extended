@@ -28,6 +28,23 @@ export const threadMetadataListSchema = z.object({
     .pipe(z.array(z.string().min(1)).min(1).max(20)),
 });
 
+export const threadStorageBatchSchema = z
+  .object({
+    hostId: z.coerce.number().int().positive(),
+    threads: z
+      .array(
+        z
+          .object({
+            threadId: z.string().trim().min(1).max(200),
+            path: z.string().trim().max(4096).nullable().optional().default(null),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict();
+
 const sidebarSummarySourceSchema = z
   .object({
     hostId: z.coerce.number().int().positive(),

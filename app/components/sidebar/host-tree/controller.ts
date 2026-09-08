@@ -31,6 +31,7 @@ export interface HostTreeController {
   threadRuntimeStatus: (hostId: number, threadId: string) => ThreadRuntimeStatus;
   threadCompletionAttention: (hostId: number, threadId: string) => boolean;
   threadActivityOverview: (hostId: number, threadId: string) => SidebarThreadOverview | null;
+  threadStorageBytes: (hostId: number, threadId: string) => number | null | undefined;
   hostResourceUsage: (hostId: number) => string | null;
   canMoveThreadToHost: boolean;
   moveThread: (thread: SidebarThread & { hostId: number; projectId: number }) => void;
