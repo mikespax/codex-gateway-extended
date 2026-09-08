@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { INITIAL_TURN_PAGE_LIMIT, OLDER_TURN_PAGE_LIMIT } from "~~/shared/config";
+import {
+  INITIAL_TURN_PAGE_LIMIT,
+  MAX_TURN_PAGE_LIMIT,
+  OLDER_TURN_PAGE_LIMIT,
+} from "~~/shared/config";
 import { optionalPositiveInt } from "./common";
 
 export const threadListSchema = z.object({
@@ -7,7 +11,7 @@ export const threadListSchema = z.object({
   projectId: optionalPositiveInt,
   cwd: z.string().trim().nullable().optional(),
   searchTerm: z.string().trim().nullable().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(30),
+  limit: z.coerce.number().int().min(1).max(MAX_TURN_PAGE_LIMIT).default(30),
   cursor: z.string().trim().nullable().optional(),
   useRemoteStateIndexOnly: z.coerce.boolean().optional(),
 });
@@ -17,7 +21,7 @@ export const threadOpenSchema = z.object({
   projectId: optionalPositiveInt,
   cwd: z.string().trim().nullable().optional(),
   threadId: z.string().trim().min(1),
-  limit: z.coerce.number().int().min(1).max(100).default(INITIAL_TURN_PAGE_LIMIT),
+  limit: z.coerce.number().int().min(1).max(MAX_TURN_PAGE_LIMIT).default(INITIAL_TURN_PAGE_LIMIT),
 });
 
 export const threadMetadataListSchema = z.object({
@@ -32,7 +36,7 @@ export const threadTurnsListSchema = z.object({
   hostId: z.coerce.number().int().positive(),
   threadId: z.string().trim().min(1),
   cursor: z.string().trim().nullable().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(OLDER_TURN_PAGE_LIMIT),
+  limit: z.coerce.number().int().min(1).max(MAX_TURN_PAGE_LIMIT).default(OLDER_TURN_PAGE_LIMIT),
   sortDirection: z.enum(["asc", "desc"]).default("desc"),
 });
 
