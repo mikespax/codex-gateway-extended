@@ -340,18 +340,18 @@ function appendItemRows(
       userMessageVariant: userMessageVariant(item, sections),
       turnTiming: item === timingTarget ? timing : null,
       agentActionsAvailable: item === timingTarget && agentActionsAvailable,
-      showInlineImages: shouldShowInlineImages(section, sections.items),
+      showInlineImages: shouldShowInlineImages(sections.items),
       sentAt: messageTimestamp(item, turn),
       turnIsActive: sections.turnIsActive,
     });
   });
 }
 
-export function shouldShowInlineImages(
-  section: ThreadTimelineItemSection,
-  items: ThreadTimelineItem[],
-) {
-  return section === "user" || hasPendingUserInput(items);
+export function shouldShowInlineImages(items: ThreadTimelineItem[]) {
+  // Historical user attachments are part of the same persisted transcript as agent/tool
+  // screenshots. Keep every recorded image hidden until this turn is actively waiting for an
+  // answer or approval; that is the only point where an inline image is actionable.
+  return hasPendingUserInput(items);
 }
 
 function hasPendingUserInput(items: ThreadTimelineItem[]) {
