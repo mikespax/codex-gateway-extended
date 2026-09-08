@@ -1,4 +1,5 @@
 import type { GatewayEvent, HostRecord, RealtimeClientMessage } from "~~/shared/types";
+import { MAX_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { requireRecord } from "../../http/validation/common";
 import { threadOpenSchema, threadStartSchema } from "../../http/validation/threads";
 import { threadBroker } from "../../runtime/broker";
@@ -41,7 +42,13 @@ export async function activateThread(
   peer: RealtimePeer,
   message: Extract<RealtimeClientMessage, { type: "thread.activate" }>,
 ) {
-  const input = threadOpenSchema.parse(message);
+  // Older browser tabs can retain more than the app-server page maximum. Cap the
+  // compatibility input before strict validation so one stale tab cannot repeatedly
+  // fail activation while other chats are being used.
+  const input = threadOpenSchema.parse({
+    ...message,
+    limit: message.limit === undefined ? undefined : Math.min(message.limit, MAX_TURN_PAGE_LIMIT),
+  });
 
   const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
   // Capture the replay cursor before reading the snapshot. Events emitted while thread/read is in
