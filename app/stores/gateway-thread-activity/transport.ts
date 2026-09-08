@@ -1,4 +1,9 @@
-import type { SidebarAiSummary, SidebarSummarySource } from "~~/shared/types";
+import {
+  SIDEBAR_SUMMARY_BATCH_LIMIT,
+  SIDEBAR_SUMMARY_FIELD_MAX_LENGTH,
+  type SidebarAiSummary,
+  type SidebarSummarySource,
+} from "~~/shared/types";
 import { gatewayApi } from "@/utils/gateway-api";
 
 export function requestSidebarAiSummaries(items: SidebarSummarySource[]) {
@@ -6,9 +11,22 @@ export function requestSidebarAiSummaries(items: SidebarSummarySource[]) {
     "/api/threads/sidebar-summaries",
     {
       method: "POST",
-      body: { items },
+      body: {
+        items: items.slice(0, SIDEBAR_SUMMARY_BATCH_LIMIT).map((item) => ({
+          ...item,
+          goal: trimSidebarSummaryValue(item.goal),
+          turnSummary: trimSidebarSummaryValue(item.turnSummary),
+          currentTask: trimSidebarSummaryValue(item.currentTask),
+          lastUserInput: trimSidebarSummaryValue(item.lastUserInput),
+        })),
+      },
     },
   );
+}
+
+function trimSidebarSummaryValue(value: string | null) {
+  const normalized = value?.replace(/\s+/g, " ").trim() ?? "";
+  return normalized === "" ? null : normalized.slice(0, SIDEBAR_SUMMARY_FIELD_MAX_LENGTH);
 }
 
 export function requestSidebarThreadStorage(input: {
