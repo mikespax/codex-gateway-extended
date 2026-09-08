@@ -29,22 +29,6 @@ export function compactSidebarSummary(value: string | null | undefined, maxWords
   return normalized.split(" ").slice(0, maxWords).join(" ");
 }
 
-/**
- * Keep the goal row to a few useful words while retaining the full objective in the tooltip.
- * This is intentionally local and deterministic: sidebar refreshes should not spend tokens or
- * send potentially sensitive work descriptions to an external summarizer.
- */
-export function compactSidebarGoal(value: string | null | undefined, maxWords = 4) {
-  const normalized = normalizeSidebarActivity(value);
-  if (normalized === "") return null;
-  const withoutLeadIn = normalized.replace(
-    /^(?:please\s+|could\s+you\s+|can\s+you\s+|i(?:'d| would| need| want)\s+to\s+|let(?:'s| us)\s+|help\s+me\s+)/i,
-    "",
-  );
-  const words = withoutLeadIn.split(" ").filter(Boolean);
-  return words.slice(0, maxWords).join(" ") || normalized.split(" ").slice(0, maxWords).join(" ");
-}
-
 export function normalizeSidebarActivity(value: string | null | undefined) {
   return value?.replace(/\s+/g, " ").trim() ?? "";
 }

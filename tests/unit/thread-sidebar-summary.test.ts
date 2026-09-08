@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  compactSidebarGoal,
   compactSidebarSummary,
   currentOperationFromTurns,
   currentOperationFromThread,
@@ -10,6 +9,7 @@ import {
   operationForItem,
   sidebarOverviewForThread,
   sidebarSummaryForThread,
+  summarizeSidebarText,
   threadGoalSummaryFromTurns,
   threadGoalSummaryFromThread,
 } from "../../app/utils/thread-sidebar-summary";
@@ -56,13 +56,16 @@ void test("sidebar summaries preserve the full goal sentence", () => {
   );
 });
 
-void test("goal labels stay compact while the full objective remains available to the tooltip", () => {
+void test("sidebar free-text labels use a single sentence instead of a four-word cap", () => {
   assert.equal(
-    compactSidebarGoal("Please migrate all Codex threads off the VPS"),
-    "migrate all Codex threads",
+    summarizeSidebarText("Please migrate all Codex threads off the VPS"),
+    "Please migrate all Codex threads off the VPS",
   );
-  assert.equal(compactSidebarGoal("Repair Gateway"), "Repair Gateway");
-  assert.equal(compactSidebarGoal(""), null);
+  assert.equal(
+    summarizeSidebarText("Repair Gateway now. Ignore this second sentence."),
+    "Repair Gateway now.",
+  );
+  assert.equal(summarizeSidebarText(""), null);
 });
 
 void test("operation labels stay descriptive and do not expose command contents", () => {
@@ -154,6 +157,19 @@ void test("thread overview captures the last completed turn and latest user inpu
   });
   assert.equal(lastCompletedTurnSummaryFromThread(value), "The refresh path is healthy.");
   assert.equal(lastUserInputFromThread(value), "Please inspect the gateway refresh path");
+  assert.equal(
+    lastUserInputFromThread(
+      thread({
+        turns: [
+          turn({
+            status: "completed",
+            items: [{ id: "user-2", type: "userMessage", text: "Use the fallback text" }],
+          }),
+        ],
+      }),
+    ),
+    "Use the fallback text",
+  );
   assert.deepEqual(
     sidebarOverviewForThread({
       goalObjective: "Keep the Gateway healthy",
