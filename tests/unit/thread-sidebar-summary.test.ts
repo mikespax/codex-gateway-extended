@@ -169,4 +169,16 @@ void test("thread overview captures the last completed turn and latest user inpu
       lastUserInput: "Please inspect the gateway refresh path",
     },
   );
+  assert.deepEqual(
+    sidebarOverviewForThread({
+      aiGoalSummary: "Keep the sidebar useful",
+      currentOperation: "Working",
+    }),
+    {
+      goal: "Keep the sidebar useful",
+      turnSummary: null,
+      currentTask: "Working",
+      lastUserInput: null,
+    },
+  );
 });

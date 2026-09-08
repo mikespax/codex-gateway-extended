@@ -89,15 +89,20 @@ export function sidebarOverviewForThread(input: {
   aiCurrentTask?: string | null;
   aiLastUserInput?: string | null;
 }): SidebarThreadOverview | null {
+  const explicitGoal = normalizeSidebarActivity(input.goalObjective);
+  const aiGoal = normalizeSidebarActivity(input.aiGoalSummary);
+  const goal =
+    input.goalStatus === "complete"
+      ? null
+      : aiGoal ||
+        (explicitGoal !== "" &&
+        (input.goalStatus === null ||
+          input.goalStatus === undefined ||
+          nonTerminalGoalStatuses.has(input.goalStatus))
+          ? explicitGoal
+          : null);
   const overview = {
-    goal:
-      typeof (input.aiGoalSummary ?? input.goalObjective) === "string" &&
-      (input.aiGoalSummary ?? input.goalObjective) !== "" &&
-      input.goalStatus !== null &&
-      input.goalStatus !== undefined &&
-      nonTerminalGoalStatuses.has(input.goalStatus)
-        ? normalizeSidebarActivity(input.aiGoalSummary ?? input.goalObjective) || null
-        : null,
+    goal,
     turnSummary: normalizeSidebarActivity(input.aiTurnSummary ?? input.turnSummary) || null,
     currentTask: normalizeSidebarActivity(input.aiCurrentTask ?? input.currentOperation) || null,
     lastUserInput: normalizeSidebarActivity(input.aiLastUserInput ?? input.lastUserInput) || null,
