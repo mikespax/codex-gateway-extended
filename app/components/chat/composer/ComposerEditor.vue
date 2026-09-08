@@ -389,7 +389,7 @@ function dismissMenu() {
   width: 2px;
   height: 1.5rem;
   border-radius: 999px;
-  background: var(--primary);
+  background: #fff;
   content: "";
   pointer-events: none;
   animation: composer-caret-blink 1.05s steps(1, end) infinite;
@@ -422,10 +422,14 @@ function dismissMenu() {
   padding: 0.5rem 0.25rem;
   font-size: 1rem;
   line-height: 1.5rem;
-  caret-color: var(--primary);
+  caret-color: #fff;
 }
 .composer-editor .cm-focused .cm-content {
-  caret-color: var(--primary);
+  caret-color: #fff;
+}
+.composer-editor .cm-cursor,
+.composer-editor .cm-dropCursor {
+  border-left-color: #fff;
 }
 .composer-editor .cm-focused {
   outline: none;

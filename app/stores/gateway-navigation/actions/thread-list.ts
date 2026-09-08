@@ -159,7 +159,11 @@ function applyProjectDirectoryAvailability(response: ThreadListResponse) {
 
 function syncThreadStatusesFromList(hostId: number, threads: GatewayThread[]) {
   const runtime = useGatewayThreadRuntimeStore();
+  const activity = useGatewayThreadActivityStore();
   for (const thread of threads) {
-    runtime.setThreadStatus(hostId, thread.id, runtimeStatusFromAppThreadStatus(thread.status));
+    const status = runtimeStatusFromAppThreadStatus(thread.status);
+    runtime.setThreadStatus(hostId, thread.id, status);
+    if (status === "running") activity.markTurnRunning(hostId, thread.id);
+    else activity.updateCurrentOperation(hostId, thread.id, null);
   }
 }

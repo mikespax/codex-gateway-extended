@@ -4,6 +4,13 @@ import { useGatewayFileWorkspaceStore } from "@/stores/file-workspace";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
 import { gatewayDomainEvents } from "../domain-events";
+import type { ThreadHistoryItem } from "~~/shared/types";
+import {
+  lastCompletedTurnSummaryFromTurn,
+  lastUserInputFromItem,
+  lastUserInputFromTurn,
+  operationForItem,
+} from "@/utils/thread-sidebar-summary";
 import {
   clearActiveTerminalProcess,
   rememberActiveTerminalProcess,
@@ -28,6 +35,9 @@ export function registerThreadProjectionSubscribers() {
     useGatewayThreadRuntimeStore().setThreadStatus(event.hostId, event.threadId, event.status, {
       turnId: event.turnId,
     });
+    const activity = useGatewayThreadActivityStore();
+    if (event.status === "running") activity.markTurnRunning(event.hostId, event.threadId);
+    else activity.updateCurrentOperation(event.hostId, event.threadId, null);
   });
   gatewayDomainEvents.on("terminal-process-detected", rememberActiveTerminalProcess);
   gatewayDomainEvents.on("terminal-process-completed", clearActiveTerminalProcess);
@@ -41,4 +51,76 @@ export function registerThreadProjectionSubscribers() {
       event.tokenUsage,
     );
   });
+  gatewayDomainEvents.on("history-item-upsert", (event) => {
+    const activity = useGatewayThreadActivityStore();
+    const lastUserInput = lastUserInputFromItem(event.item);
+    if (lastUserInput !== undefined) {
+      activity.updateLastUserInput(event.hostId, event.threadId, lastUserInput);
+    }
+    const operation = operationForHistoryItem(event.item);
+    if (operation !== null) {
+      activity.updateCurrentOperation(event.hostId, event.threadId, operation);
+    }
+  });
+  gatewayDomainEvents.on("history-turn-appended", (event) => {
+    const activity = useGatewayThreadActivityStore();
+    const lastUserInput = lastUserInputFromTurn(event.turn);
+    if (lastUserInput !== undefined) {
+      activity.updateLastUserInput(event.hostId, event.threadId, lastUserInput);
+    }
+    const turnSummary = lastCompletedTurnSummaryFromTurn(event.turn);
+    if (turnSummary !== undefined) {
+      activity.updateTurnSummary(event.hostId, event.threadId, turnSummary);
+    }
+  });
+  gatewayDomainEvents.on("history-turn-synced", (event) => {
+    const activity = useGatewayThreadActivityStore();
+    const lastUserInput = lastUserInputFromTurn(event.turn);
+    if (lastUserInput !== undefined) {
+      activity.updateLastUserInput(event.hostId, event.threadId, lastUserInput);
+    }
+    const turnSummary = lastCompletedTurnSummaryFromTurn(event.turn);
+    if (turnSummary !== undefined) {
+      activity.updateTurnSummary(event.hostId, event.threadId, turnSummary);
+    }
+  });
+  gatewayDomainEvents.on("history-agent-delta", (event) => {
+    useGatewayThreadActivityStore().updateCurrentOperation(
+      event.hostId,
+      event.threadId,
+      "Writing a response",
+    );
+  });
+  gatewayDomainEvents.on("history-reasoning-summary-delta", (event) => {
+    useGatewayThreadActivityStore().updateCurrentOperation(
+      event.hostId,
+      event.threadId,
+      "Thinking through the change",
+    );
+  });
+  gatewayDomainEvents.on("history-reasoning-text-delta", (event) => {
+    useGatewayThreadActivityStore().updateCurrentOperation(
+      event.hostId,
+      event.threadId,
+      "Thinking through the change",
+    );
+  });
+  gatewayDomainEvents.on("history-plan-delta", (event) => {
+    useGatewayThreadActivityStore().updateCurrentOperation(
+      event.hostId,
+      event.threadId,
+      "Planning the next steps",
+    );
+  });
+  gatewayDomainEvents.on("history-command-output-delta", (event) => {
+    useGatewayThreadActivityStore().updateCurrentOperation(
+      event.hostId,
+      event.threadId,
+      "Running a command",
+    );
+  });
+}
+
+function operationForHistoryItem(item: ThreadHistoryItem) {
+  return operationForItem(item);
 }

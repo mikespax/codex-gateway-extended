@@ -21,6 +21,7 @@ import HostStatusIndicator from "./HostStatusIndicator.vue";
 import SidebarRowLabel from "../SidebarRowLabel.vue";
 import SidebarProjectRow from "./SidebarProjectRow.vue";
 import ThreadRow from "../thread-list/ThreadRow.vue";
+import SidebarResourceUsage from "../SidebarResourceUsage.vue";
 import { requireHostTreeController } from "./controller";
 
 defineProps<{ host: HostRecord }>();
@@ -45,12 +46,21 @@ const controller = requireHostTreeController();
           />
           <ChevronRightIcon v-else class="size-3.5 shrink-0 text-ink-muted" />
           <ServerIcon class="size-4 shrink-0" />
-          <SidebarRowLabel
-            :title="host.name"
-            :subtitle="
-              [controller.hostResourceUsage(host.id), host.sshHost].filter(Boolean).join(' · ')
-            "
-          >
+          <SidebarRowLabel :title="host.name">
+            <template v-if="controller.hostResourceUsage(host.id) || host.sshHost" #subtitle>
+              <SidebarResourceUsage
+                v-if="controller.hostResourceUsage(host.id)"
+                :value="controller.hostResourceUsage(host.id)"
+                :test-id="`host-resource-usage-${host.id}`"
+              />
+              <span
+                v-if="controller.hostResourceUsage(host.id) && host.sshHost"
+                class="text-ink-faint"
+              >
+                ·
+              </span>
+              <span v-if="host.sshHost" class="text-ink-muted">{{ host.sshHost }}</span>
+            </template>
             <template #trailing>
               <HostStatusIndicator
                 :status="controller.hostConnectionStatuses[host.id]?.status ?? 'idle'"
@@ -114,6 +124,9 @@ const controller = requireHostTreeController();
               :status="controller.threadRuntimeStatus(project.hostId, String(thread.id))"
               :completion-attention="
                 controller.threadCompletionAttention(project.hostId, String(thread.id))
+              "
+              :activity-overview="
+                controller.threadActivityOverview(project.hostId, String(thread.id))
               "
               :subtitle="formatRelative(thread.updatedAt)"
               :thread-bytes="thread.threadBytes"

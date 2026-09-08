@@ -77,7 +77,7 @@ watch(sidebarOpen, (open) => {
           </Button>
           <SheetContent
             side="left"
-            class="w-[min(92vw,26rem)] border-r border-hairline bg-canvas-soft p-0 shadow-2xl"
+            class="!w-full max-w-none border-r border-hairline bg-canvas-soft p-0 shadow-2xl"
           >
             <SheetHeader class="sr-only">
               <SheetTitle>{{ $t("app.sidebar") }}</SheetTitle>

@@ -326,7 +326,7 @@ export function createThreadOpenActions() {
     async startThread(
       options: ComposerTurnOptions = {},
       context?: { hostId?: number; projectId?: number | null },
-    ) {
+    ): Promise<string | null> {
       const gateway = useGatewayBootstrapStore();
       const navigation = useGatewayNavigationStore();
       cacheSelectedThreadView();
@@ -337,13 +337,13 @@ export function createThreadOpenActions() {
         navigation.selectedProjectId = context.projectId ?? null;
         clearCurrentThreadView();
       }
-      if (navigation.selectedHostId === null) return;
+      if (navigation.selectedHostId === null) return null;
       const sessionIsCurrent = captureSessionEpoch();
       const hostId = navigation.selectedHostId;
       const projectId = navigation.selectedProjectId;
       try {
         const result = await requestStartThread(options);
-        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         const threadId = applyStartedThreadResult(result);
         cacheSelectedThreadView();
         rememberOpenThread(threadId);
@@ -360,12 +360,14 @@ export function createThreadOpenActions() {
         // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
         await navigation.listThreads();
         cacheSelectedThreadView();
+        return threadId;
       } catch (error: unknown) {
-        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         gateway.setError(
           messageFromError(error, gateway.t("app.openThreadFailed"), gateway.errorLabels),
           { hostId, projectId, threadId: navigation.selectedThreadId },
         );
+        return null;
       }
     },
   };

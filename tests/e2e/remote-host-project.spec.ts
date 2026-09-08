@@ -33,6 +33,9 @@ test("starts a new thread from the global sidebar button on the selected host", 
   await page.getByTestId("new-thread-button").click();
   await expect(page.getByTestId(`new-thread-host-option-${host.id}`)).toBeVisible();
   await page.getByTestId(`new-thread-host-option-${host.id}`).click();
+  await expect(page.getByTestId("new-thread-name-dialog")).toBeVisible();
+  await page.getByTestId("new-thread-name-input").fill("Remote new chat");
+  await page.getByTestId("new-thread-create-submit").click();
 
   const startRequest = await waitForRealtimeClientMessage(page, "thread.start", realtimeOffset);
   expect(startRequest).toMatchObject({
