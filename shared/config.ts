@@ -5,6 +5,8 @@ import type { GatewayConfig, GatewayNotificationSettings } from "./types";
 // mounts. A same-page cached view may retain a wider depth that the user already loaded.
 export const INITIAL_TURN_PAGE_LIMIT = 2;
 export const OLDER_TURN_PAGE_LIMIT = 5;
+export const MAX_TURN_PAGE_LIMIT = 100;
+export const HOT_THREAD_LIST_LIMIT = 18;
 export const SERVER_TURN_CACHE_LIMIT = 50;
 export const SERVER_THREAD_CACHE_LIMIT = 100;
 export const CLIENT_THREAD_CACHE_LIMIT = 24;

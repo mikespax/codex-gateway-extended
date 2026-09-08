@@ -18,28 +18,34 @@ import type { AppServerThread, GatewayThread, ProjectRecord } from "~~/shared/ty
 import type { HostWithSecret } from "../../utils/gateway/infra/ssh/ssh-types";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 import { gatewayThreadFromAppServer } from "../../utils/gateway/protocol/gateway-thread";
+import { HOT_THREAD_LIST_LIMIT } from "~~/shared/config";
 
 export default defineGatewayEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (body) => threadListSchema.parse(body));
   const host = requireRecord(hostStore.getWithSecret(query.hostId), "Host not found");
   const userId = event.context.auth?.user.id;
+  const searchTerm = trimmedOrNull(query.searchTerm);
+  const historicalLookup = searchTerm !== null;
+  const effectiveLimit = historicalLookup
+    ? query.limit
+    : Math.min(query.limit, HOT_THREAD_LIST_LIMIT);
   const discoveryGeneration =
     userId === undefined ? null : threadProjectDiscovery.captureGeneration(userId, host.id);
   setGatewayRequestLogContext(event, "threads/list", {
     ...hostLogContext(host),
     projectId: query.projectId ?? null,
     cwd: query.cwd ?? null,
-    limit: query.limit,
+    limit: effectiveLimit,
     cursor: query.cursor ?? null,
-    searchTerm: query.searchTerm ?? null,
+    searchTerm: searchTerm ?? null,
     useRemoteStateIndexOnly: query.useRemoteStateIndexOnly ?? false,
   });
 
   const listParams = withAllThreadSources({
-    limit: query.limit,
+    limit: effectiveLimit,
     cursor: trimmedOrNull(query.cursor),
     cwd: trimmedOrNull(query.cwd) ?? undefined,
-    searchTerm: trimmedOrNull(query.searchTerm) ?? undefined,
+    searchTerm: searchTerm ?? undefined,
     useStateDbOnly: query.useRemoteStateIndexOnly ?? false,
   });
   const page = await threadBroker.listThreads(host, listParams);
@@ -65,7 +71,7 @@ export default defineGatewayEventHandler(async (event) => {
     threadSnapshotStore.listForHost(host.id).map((record) => record.snapshot.thread),
     indexedThreads,
     projects,
-    query.searchTerm ?? null,
+    searchTerm,
   );
   let threadsWithStorage = gatewayThreads;
   const cachedSizes = threadStorage.cached(host, gatewayThreads);
@@ -117,12 +123,9 @@ function shouldDiscoverHostProjects(query: {
   searchTerm?: string | null;
   cursor?: string | null;
 }) {
-  return (
-    (query.projectId === null || query.projectId === undefined) &&
-    trimmedOrNull(query.cwd) === null &&
-    trimmedOrNull(query.searchTerm) === null &&
-    trimmedOrNull(query.cursor) === null
-  );
+  // Historical project discovery is an explicit lookup operation. Normal sidebar refreshes only
+  // index their bounded hot page; walking every older cursor competes with foreground thread RPCs.
+  return trimmedOrNull(query.searchTerm) !== null;
 }
 
 function gatewayThreadsForList(
