@@ -95,6 +95,15 @@ test("shows a scrolling overview of goal, turn, task, and user input", async ({ 
     "Updating files while refreshing the sidebar",
   );
   await expect(row.getByTestId("thread-sidebar-overview-goal")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const activity = window.__codexGatewayE2e?.activity;
+    if (!activity) throw new Error("Gateway E2E activity store is unavailable");
+    activity.updateTurnSummary(1, "sidebar-summary-thread", null);
+    activity.updateCurrentOperation(1, "sidebar-summary-thread", null);
+    activity.updateLastUserInput(1, "sidebar-summary-thread", null);
+  });
+  await expect(row.getByTestId("thread-sidebar-overview")).toHaveCount(0);
 });
 
 test("uses the selected host's most recently used project for a new thread", async ({ page }) => {

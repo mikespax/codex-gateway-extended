@@ -27,6 +27,11 @@ export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>)
   let timer: ReturnType<typeof setInterval> | null = null;
   let refreshPromise: Promise<void> | null = null;
 
+  const refreshWhenVisible = () => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    void refresh(true);
+  };
+
   async function refresh(force = false) {
     if (refreshPromise !== null) return refreshPromise;
     const now = Date.now();
@@ -80,10 +85,14 @@ export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>)
   onMounted(() => {
     void refresh(true);
     timer = setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
   });
   watch(targets, () => void refresh(), { deep: true, flush: "post" });
   onBeforeUnmount(() => {
     if (timer !== null) clearInterval(timer);
+    window.removeEventListener("focus", refreshWhenVisible);
+    document.removeEventListener("visibilitychange", refreshWhenVisible);
   });
 
   return { refresh };
