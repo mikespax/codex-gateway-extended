@@ -79,7 +79,16 @@ export const gatewayConfigSchema = z
   .strict();
 
 export function parseGatewayConfig(body: unknown): GatewayConfig {
-  const input = gatewayConfigSchema.parse(body);
+  // Older Gateway builds persisted provider-routing preferences alongside the
+  // host/project catalog. Routing is no longer part of the persisted config,
+  // but those records must remain readable during an upgrade. Strip only this
+  // known legacy field before applying the otherwise-strict schema so unrelated
+  // malformed keys still fail closed.
+  const normalizedBody =
+    typeof body === "object" && body !== null && !Array.isArray(body)
+      ? Object.fromEntries(Object.entries(body).filter(([key]) => key !== "providerRouting"))
+      : body;
+  const input = gatewayConfigSchema.parse(normalizedBody);
   const timestamp = new Date().toISOString();
   return {
     version: 1,
