@@ -133,7 +133,8 @@ const sidebarActivityTargets = computed(() => {
     const key = `${thread.hostId}:${threadId}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    result.push({ hostId: thread.hostId, threadId });
+    const summary = threadActivity.summariesByKey[key];
+    result.push({ hostId: thread.hostId, threadId, path: summary?.path ?? null });
   }
   return result;
 });
@@ -166,6 +167,7 @@ const hostTreeController = computed<HostTreeController>(() => ({
   threadRuntimeStatus: sidebarTree.threadRuntimeStatus,
   threadCompletionAttention: sidebarTree.threadCompletionAttention,
   threadActivityOverview: sidebarTree.threadActivityOverview,
+  threadStorageBytes: sidebarTree.threadStorageBytes,
   hostResourceUsage: usageForHost,
   canMoveThreadToHost: hosts.value.length > 1,
   moveThread: requestThreadMove,

@@ -9,7 +9,10 @@ import { sidebarSummarySourceFingerprint } from "~~/shared/types";
 const CACHE_TTL_MS = 60_000;
 const RUN_TIMEOUT_MS = 45_000;
 const MAX_OUTPUT_BYTES = 48 * 1024;
-const DEFAULT_MODEL = "gpt-5.4-nano";
+// Keep summaries on the efficient model that is present in the Codex CLI model catalog. The
+// previously used gpt-5.4-nano slug is not advertised by current CLI releases and causes every
+// batch to fail before returning JSON.
+const DEFAULT_MODEL = "gpt-5.6-luna";
 const MAX_PROMPT_VALUE_LENGTH = 600;
 const MAX_DISPLAY_VALUE_LENGTH = 120;
 
@@ -113,7 +116,7 @@ async function runRemoteBatch(
       "\n" +
       'printf \'%s\' "$prompt" | "$CODEX_BIN" exec --ephemeral --ignore-user-config --ignore-rules --sandbox read-only --skip-git-repo-check --color never --model ' +
       shellQuote(model) +
-      " -\n",
+      " -c model_reasoning_effort=low -\n",
   );
   const result = await sshConnections.exec(runnerHost, remoteLoginShellCommand(payload), {
     timeoutMs: RUN_TIMEOUT_MS,

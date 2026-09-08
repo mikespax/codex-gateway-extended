@@ -174,6 +174,10 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
         });
   }
 
+  function threadStorageBytes(hostId: number, threadId: string) {
+    return summariesByKey.value[threadKey(hostId, threadId)]?.threadBytes;
+  }
+
   function pinnedRuntimeStatus(thread: PinnedThreadRecord) {
     const key = pinnedThreadKey(thread);
     if (openingPinnedThreadKey.value === key) {
@@ -251,6 +255,7 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     threadRuntimeStatus,
     threadCompletionAttention,
     threadActivityOverview,
+    threadStorageBytes,
     pinnedRuntimeStatus,
     pinnedCompletionAttention,
   };

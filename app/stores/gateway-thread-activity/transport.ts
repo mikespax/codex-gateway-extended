@@ -10,3 +10,15 @@ export function requestSidebarAiSummaries(items: SidebarSummarySource[]) {
     },
   );
 }
+
+export function requestSidebarThreadStorage(input: {
+  hostId: number;
+  threads: Array<{ threadId: string; path: string | null }>;
+}) {
+  return gatewayApi<{
+    data: Array<{ threadId: string; threadBytes: number | null }>;
+  }>("/api/threads/storage", {
+    method: "POST",
+    body: input,
+  });
+}

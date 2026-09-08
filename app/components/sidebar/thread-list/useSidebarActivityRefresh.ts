@@ -2,7 +2,10 @@ import { onBeforeUnmount, onMounted, watch, type Ref } from "vue";
 import { threadTurnsFromHistory } from "~~/shared/thread-history/shape";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { requestThreadTurnsPage } from "@/stores/gateway-thread-turns/transport";
-import { requestSidebarAiSummaries } from "@/stores/gateway-thread-activity/transport";
+import {
+  requestSidebarAiSummaries,
+  requestSidebarThreadStorage,
+} from "@/stores/gateway-thread-activity/transport";
 
 const REFRESH_INTERVAL_MS = 60_000;
 const REFRESH_AFTER_FAILURE_MS = 10_000;
@@ -12,6 +15,7 @@ const MAX_CONCURRENT_REFRESHES = 3;
 export interface SidebarActivityTarget {
   hostId: number;
   threadId: string;
+  path: string | null;
 }
 
 /** Keep unselected rows current without opening a full thread view for every conversation. */
@@ -65,7 +69,7 @@ export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>)
       await Promise.all(
         Array.from({ length: Math.min(MAX_CONCURRENT_REFRESHES, pending.length) }, () => worker()),
       );
-      void refreshAiSummaries(pending);
+      await Promise.all([refreshThreadStorage(pending), refreshAiSummaries(pending)]);
     })().finally(() => {
       refreshPromise = null;
     });
@@ -82,6 +86,27 @@ export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>)
   });
 
   return { refresh };
+
+  async function refreshThreadStorage(refreshedTargets: SidebarActivityTarget[]) {
+    const byHost = new Map<number, Array<{ threadId: string; path: string | null }>>();
+    for (const target of refreshedTargets) {
+      const group = byHost.get(target.hostId) ?? [];
+      group.push({ threadId: target.threadId, path: target.path });
+      byHost.set(target.hostId, group);
+    }
+    await Promise.all(
+      [...byHost].map(async ([hostId, threads]) => {
+        try {
+          const result = await requestSidebarThreadStorage({ hostId, threads });
+          for (const item of result.data) {
+            activity.updateThreadBytes(hostId, item.threadId, item.threadBytes);
+          }
+        } catch {
+          // Storage is advisory. A host that is offline must not suppress activity or summaries.
+        }
+      }),
+    );
+  }
 
   async function refreshAiSummaries(refreshedTargets: SidebarActivityTarget[]) {
     const items = refreshedTargets.flatMap((target) => {

@@ -28,6 +28,7 @@ export interface ThreadActivitySummary {
   projectId: number | null;
   threadId: string;
   title: string;
+  path: string | null;
   cwd: string | null;
   projectName: string | null;
   parentThreadId: string | null;
@@ -147,6 +148,13 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     upsertSummary({ ...existing, hostId, threadId, lastUserInput: input });
   }
 
+  function updateThreadBytes(hostId: number, threadId: string, bytes: number | null) {
+    const key = pinnedKey(hostId, threadId);
+    const existing = summariesByKey.value[key];
+    if (existing === undefined) return;
+    upsertSummary({ ...existing, hostId, threadId, threadBytes: bytes });
+  }
+
   function applyAiSidebarSummary(summary: SidebarAiSummary) {
     const key = pinnedKey(summary.hostId, summary.threadId);
     const existing = summariesByKey.value[key];
@@ -220,6 +228,7 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
         projectId: project?.id ?? null,
         threadId: record.id,
         title: firstNonEmptyString([record.title, record.name, record.preview]) ?? record.id,
+        path: null,
         cwd: stringOrNull(record.cwd),
         projectName: project?.name ?? null,
         parentThreadId: stringOrNull(record.parentThreadId),
@@ -263,6 +272,7 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
         // marker is the only event that is allowed to move a row during this page session.
         displayActivityAt,
         projectId: summary.projectId ?? existing?.projectId ?? null,
+        path: summary.path ?? existing?.path ?? null,
         cwd: summary.cwd ?? existing?.cwd ?? null,
         projectName: summary.projectName ?? existing?.projectName ?? null,
         parentThreadId: summary.parentThreadId ?? existing?.parentThreadId ?? null,
@@ -324,6 +334,7 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     updateCurrentOperation,
     updateTurnSummary,
     updateLastUserInput,
+    updateThreadBytes,
     applyAiSidebarSummary,
     ingestSidebarTurns,
     markTurnRunning,
@@ -389,6 +400,7 @@ function summaryFromThread(
     | "agentRole"
     | "name"
     | "preview"
+    | "path"
     | "cwd"
     | "source"
     | "recencyAt"
@@ -406,6 +418,7 @@ function summaryFromThread(
     projectId,
     threadId: thread.id,
     title: firstNonEmptyString([gatewayTitle, thread.name, thread.preview]) ?? thread.id,
+    path: stringOrNull(thread.path),
     cwd: stringOrNull(thread.cwd),
     projectName: project?.name ?? null,
     parentThreadId,
