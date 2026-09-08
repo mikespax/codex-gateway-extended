@@ -10,6 +10,7 @@ const props = defineProps<{
   hostId: number | null;
   threadId: string | null;
   userMessageVariant?: "normal" | "steer";
+  showInlineImages?: boolean;
   turnTiming?: DisplayedTurnTiming | null;
   agentActionsAvailable?: boolean;
   sentAt?: number | string | null;
@@ -35,6 +36,7 @@ const itemPresentationProps = computed(() => {
     :host-id="hostId"
     :thread-id="threadId"
     :variant="userMessageVariant"
+    :show-inline-images="props.showInlineImages === true"
     :turn-timing="item.type === 'agentMessage' ? turnTiming : undefined"
     :agent-actions-available="item.type === 'agentMessage' && agentActionsAvailable"
     :sent-at="item.type === 'userMessage' || item.type === 'agentMessage' ? sentAt : undefined"

@@ -65,6 +65,7 @@ export class ThreadOpenService {
         : null;
     let cachedSnapshot = memorySnapshot ?? persistentCandidate?.snapshot ?? null;
     const fallbackRuntimeStatus = persistentCandidate?.authoritativeStatus ?? null;
+    let cacheValidationFailed = false;
     const cachedSnapshotEventCursor =
       persistentCandidate?.verified === true
         ? persistentCandidate.lastEventId
@@ -88,7 +89,9 @@ export class ThreadOpenService {
           }
         } catch (error) {
           // Freshness is advisory. Keep the fast cached view available during a transient RPC
-          // failure; the next activation after the cooldown will retry the check.
+          // failure, but do not report it as an authoritative activation result. The caller can
+          // still use it as an explicit fallback if the full refresh also fails.
+          cacheValidationFailed = true;
           runtimeLog("thread cache validation failed", {
             hostId: host.id,
             threadId,
@@ -98,6 +101,7 @@ export class ThreadOpenService {
       }
       if (
         !cacheChanged &&
+        !cacheValidationFailed &&
         persistentCandidate?.verified !== false &&
         snapshotSatisfiesTurnLimit(cachedSnapshot, limit)
       ) {
@@ -167,6 +171,7 @@ export class ThreadOpenService {
           projectCwd,
           fallbackRuntimeStatus,
           cachedSnapshotEventCursor,
+          true,
         );
       }
       throw error;
@@ -494,6 +499,7 @@ export class ThreadOpenService {
     projectCwd?: string | null,
     runtimeStatusOverride?: ThreadRuntimeStatus | null,
     lastEventId = gatewayEventStore.latestId(host.id, threadId),
+    stale = false,
   ) {
     const recentEvents = gatewayEventStore.list(host.id, threadId, 0, 200);
     const resolvedProjectId = resolveProjectId(
@@ -510,6 +516,7 @@ export class ThreadOpenService {
     return {
       thread: gatewayThreadFromAppServer(host.id, resolvedProjectId, snapshot.thread),
       history: snapshot.history,
+      ...(stale ? { stale: true } : {}),
       lastEventId,
       runtimeStatus:
         runtimeStatusOverride ??

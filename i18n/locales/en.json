@@ -281,6 +281,7 @@
     "noThread": "Open or create a thread",
     "chooseProject": "Choose a project to view threads",
     "loadingGateway": "Loading remote threads",
+    "latestHistoryUnavailable": "Latest history is unavailable; open the chat again to retry",
     "loadOlder": "Load earlier messages",
     "loadingOlder": "Loading earlier messages",
     "thinking": "Thinking",

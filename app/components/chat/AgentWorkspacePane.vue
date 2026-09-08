@@ -32,7 +32,7 @@ const showThreadLoading = computed(
   () =>
     initializing.value ||
     openingThread.value ||
-    (Boolean(selectedThreadId.value) && !selectedThreadViewReady.value && !visibleError.value),
+    (Boolean(selectedThreadId.value) && !selectedThreadViewReady.value),
 );
 </script>
 
@@ -51,7 +51,7 @@ const showThreadLoading = computed(
       >
         <div class="flex items-center gap-2">
           <Loader2Icon class="size-4 animate-spin" />
-          <span>{{ t("app.loadingGateway") }}</span>
+          <span>{{ visibleError || t("app.loadingGateway") }}</span>
         </div>
       </ChatPanelScrollArea>
 

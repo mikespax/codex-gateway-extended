@@ -281,6 +281,7 @@
     "noThread": "打开或创建一个会话",
     "chooseProject": "选择一个项目查看会话",
     "loadingGateway": "正在加载远端会话",
+    "latestHistoryUnavailable": "最新历史暂时不可用，请重新打开会话重试",
     "loadOlder": "加载更早消息",
     "loadingOlder": "正在加载更早消息",
     "thinking": "思考中",

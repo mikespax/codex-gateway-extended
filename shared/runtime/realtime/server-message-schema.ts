@@ -149,6 +149,7 @@ const threadOpenResultFields = {
   hostId: positiveId,
   thread: gatewayThreadSchema,
   history: threadHistorySchema,
+  stale: z.boolean().optional(),
   lastEventId: nonNegativeId,
   eventEpoch: nonEmptyString,
   runtimeStatus: z

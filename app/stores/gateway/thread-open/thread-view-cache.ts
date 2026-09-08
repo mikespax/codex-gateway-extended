@@ -25,12 +25,12 @@ export function selectedThreadView() {
   return key === null ? null : (views.threadViews[key] ?? null);
 }
 
-export function upsertThreadView(view: ThreadViewState) {
+export function upsertThreadView(view: ThreadViewState, options: { persist?: boolean } = {}) {
   const views = useGatewayThreadViewStore();
   const key = threadViewKey(view.hostId, view.threadId);
   const { [key]: _existing, ...remaining } = views.threadViews;
   views.threadViews = pruneThreadViews({ ...remaining, [key]: view });
-  persistThreadViewSoon(view);
+  if (options.persist !== false) persistThreadViewSoon(view);
 }
 
 function pruneThreadViews(threadViews: Record<string, ThreadViewState>) {
@@ -87,6 +87,9 @@ export function activateThreadViewFromCache(hostId: number, threadId: string) {
   navigation.selectedThreadId = view.threadId;
   views.currentThread = view.currentThread;
   views.history = view.history;
+  // The cached projection is retained for recovery, but it is never presented as current while
+  // the authoritative activation request is in flight.
+  views.authoritative = false;
   views.timelineTurns = view.timelineTurns;
   views.events = [...view.events];
   views.olderTurnsCursor = view.olderTurnsCursor;
