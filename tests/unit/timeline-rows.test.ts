@@ -9,16 +9,16 @@ void test("hides recorded images unless a turn is waiting for user input", () =>
     type: "imageView",
     path: "/tmp/error.png",
   };
-  assert.equal(shouldShowInlineImages("intermediate", [image]), false);
+  assert.equal(shouldShowInlineImages([image]), false);
   assert.equal(
-    shouldShowInlineImages("intermediate", [
+    shouldShowInlineImages([
       image,
       { id: "request-1", type: "requestUserInput", requestId: "request-1" },
     ]),
     true,
   );
   assert.equal(
-    shouldShowInlineImages("intermediate", [
+    shouldShowInlineImages([
       image,
       { id: "approval-1", type: "commandExecution", pendingApproval: { requestId: "approval-1" } },
     ]),
@@ -26,11 +26,11 @@ void test("hides recorded images unless a turn is waiting for user input", () =>
   );
 });
 
-void test("always shows images attached to user messages", () => {
+void test("also hides images attached to historical user messages", () => {
   const userImage: ThreadTimelineItem = {
     id: "user-1",
     type: "userMessage",
     content: [{ type: "image", url: "data:image/png;base64,abc" }],
   };
-  assert.equal(shouldShowInlineImages("user", [userImage]), true);
+  assert.equal(shouldShowInlineImages([userImage]), false);
 });
