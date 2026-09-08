@@ -4,6 +4,7 @@ import type {
   AppServerThread,
   GatewayThread,
   ProjectRecord,
+  ThreadHistoryTurn,
   ThreadGoalStatus,
   ThreadRuntimeStatus,
 } from "~~/shared/types";
@@ -12,8 +13,11 @@ import { firstNonEmptyString, trimmedOrNull } from "~~/shared/utils/strings";
 import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
 import {
   currentOperationFromThread,
+  currentOperationFromTurns,
   lastCompletedTurnSummaryFromThread,
+  lastCompletedTurnSummaryFromTurn,
   lastUserInputFromThread,
+  lastUserInputFromTurn,
   threadGoalSummaryFromThread,
 } from "@/utils/thread-sidebar-summary";
 
@@ -136,6 +140,30 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     upsertSummary({ ...existing, hostId, threadId, lastUserInput: input });
   }
 
+  /** Apply a small, full-items history page to an unselected sidebar row. */
+  function ingestSidebarTurns(hostId: number, threadId: string, turns: ThreadHistoryTurn[]) {
+    const key = pinnedKey(hostId, threadId);
+    const existing = summariesByKey.value[key];
+    if (existing === undefined || turns.length === 0) return;
+    const turnSummary = turns
+      .slice()
+      .reverse()
+      .map((turn) => lastCompletedTurnSummaryFromTurn(turn))
+      .find((summary): summary is string => summary !== undefined);
+    const lastUserInput = turns
+      .slice()
+      .reverse()
+      .map((turn) => lastUserInputFromTurn(turn))
+      .find((input): input is string => input !== undefined);
+    const currentOperation = currentOperationFromTurns(turns);
+    upsertSummary({
+      ...existing,
+      currentOperation,
+      ...(turnSummary !== undefined ? { turnSummary } : {}),
+      ...(lastUserInput !== undefined ? { lastUserInput } : {}),
+    });
+  }
+
   function markTurnRunning(hostId: number, threadId: string) {
     const key = pinnedKey(hostId, threadId);
     const existing = summariesByKey.value[key];
@@ -250,6 +278,7 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     updateCurrentOperation,
     updateTurnSummary,
     updateLastUserInput,
+    ingestSidebarTurns,
     markTurnRunning,
     resetState,
   };
