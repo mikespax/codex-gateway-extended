@@ -41,6 +41,18 @@ import {
 } from "./helpers/remote-codex";
 
 test("uses the mobile layout with hidden sidebar and usable composer shell", async ({ page }) => {
+  await page.route("**/api/provider-router/thread?*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        model: "provider-route-regression",
+        transport: "openrouter",
+        reason: "off_peak",
+        recordedAt: new Date().toISOString(),
+      }),
+    });
+  });
   await page.route("**/api/hosts/1/codex-usage", async (route) => {
     await route.fulfill({
       status: 200,
@@ -81,6 +93,7 @@ test("uses the mobile layout with hidden sidebar and usable composer shell", asy
   await expect(page.getByTestId("chat-scroll-area")).toBeVisible();
   await expect(page.getByTestId("codex-usage-badge")).toHaveText("73%");
   await expect(page.getByTestId("codex-usage-badge")).toHaveAttribute("aria-label", /73%/);
+  await expect(page.getByTestId("provider-route-badge")).toHaveCount(0);
   await expect(page.getByTestId("decrease-chat-text-size")).toBeVisible();
   await expect(page.getByTestId("increase-chat-text-size")).toBeVisible();
   await expect(page.getByTestId("open-tmux-mobile-button")).toHaveCount(0);

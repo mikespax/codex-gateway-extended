@@ -5,7 +5,6 @@ import { onBeforeUnmount, ref } from "vue";
 import { Button } from "@codex-gateway/ui/button";
 import { storeToRefs } from "pinia";
 import CodexUsageBadge from "@/components/chat/CodexUsageBadge.vue";
-import ProviderRouteBadge from "@/components/chat/ProviderRouteBadge.vue";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 
 import { floatDockItem, popoutDockItem } from "./actions";
@@ -48,7 +47,6 @@ function popout() {
 
 <template>
   <div class="flex h-full items-center gap-0.5 px-1">
-    <ProviderRouteBadge />
     <CodexUsageBadge :host-id="selectedHostId" />
     <Button
       variant="ghost"
