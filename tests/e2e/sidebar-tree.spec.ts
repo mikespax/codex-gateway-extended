@@ -78,6 +78,8 @@ test("shows a scrolling overview of goal, turn, task, and user input", async ({ 
   await expect(row.getByTestId("thread-sidebar-overview-lastUserInput")).toHaveText(
     "Please verify the Gateway history refresh.",
   );
+  await expect(overview.getByText("Last:", { exact: true })).toBeVisible();
+  await expect(overview.getByText("User:", { exact: true })).toBeVisible();
 
   await page.evaluate(() => {
     const activity = window.__codexGatewayE2e?.activity;
@@ -92,6 +94,7 @@ test("shows a scrolling overview of goal, turn, task, and user input", async ({ 
   await expect(row.getByTestId("thread-sidebar-overview-currentTask")).toHaveText(
     "Updating files while refreshing the sidebar",
   );
+  await expect(row.getByTestId("thread-sidebar-overview-goal")).toHaveCount(0);
 });
 
 test("uses the selected host's most recently used project for a new thread", async ({ page }) => {
