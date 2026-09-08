@@ -163,7 +163,10 @@ function handleClick(event: MouseEvent) {
 }
 
 async function copyMarkdownCode(button: HTMLButtonElement) {
-  const code = button.closest(".markdown-code-block")?.querySelector("pre code")?.textContent;
+  const codeElement = button
+    .closest(".markdown-code-block")
+    ?.querySelector("pre code") as HTMLElement | null;
+  const code = codeElement ? extractCodeText(codeElement) : undefined;
   if (!code || !clipboardSupported.value) {
     toast.error(t("app.copyCodeFailed"));
     return;
@@ -179,6 +182,28 @@ async function copyMarkdownCode(button: HTMLButtonElement) {
   } catch {
     toast.error(t("app.copyCodeFailed"));
   }
+}
+
+/**
+ * `textContent` does not include a character for an HTML `<br>`. Shiki uses `<br>` for
+ * highlighted line boundaries, while diff rendering uses one block span per line. Rebuild those
+ * boundaries before handing text to the clipboard so copied commands remain runnable.
+ */
+function extractCodeText(codeElement: HTMLElement) {
+  const clone = codeElement.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll("br").forEach((lineBreak) => {
+    lineBreak.replaceWith(document.createTextNode("\n"));
+  });
+
+  const diffLines = Array.from(clone.children).filter(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement && child.classList.contains("diff-line"),
+  );
+  if (diffLines.length > 0) {
+    return diffLines.map((line) => line.textContent ?? "").join("\n");
+  }
+
+  return clone.textContent ?? "";
 }
 
 useEventListener(root, "click", handleClick);
