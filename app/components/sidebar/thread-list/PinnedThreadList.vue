@@ -58,6 +58,10 @@ function activityOverview(thread: PinnedThreadRecord) {
         currentOperation: summary.currentOperation,
         turnSummary: summary.turnSummary,
         lastUserInput: summary.lastUserInput,
+        aiGoalSummary: summary.aiGoalSummary,
+        aiTurnSummary: summary.aiTurnSummary,
+        aiCurrentTask: summary.aiCurrentTask,
+        aiLastUserInput: summary.aiLastUserInput,
       });
 }
 </script>

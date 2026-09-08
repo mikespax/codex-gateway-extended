@@ -167,6 +167,10 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
           currentOperation: summary.currentOperation,
           turnSummary: summary.turnSummary,
           lastUserInput: summary.lastUserInput,
+          aiGoalSummary: summary.aiGoalSummary,
+          aiTurnSummary: summary.aiTurnSummary,
+          aiCurrentTask: summary.aiCurrentTask,
+          aiLastUserInput: summary.aiLastUserInput,
         });
   }
 

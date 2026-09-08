@@ -73,6 +73,10 @@ function subtitle(thread: RecentThread) {
             currentOperation: thread.currentOperation,
             turnSummary: thread.turnSummary,
             lastUserInput: thread.lastUserInput,
+            aiGoalSummary: thread.aiGoalSummary,
+            aiTurnSummary: thread.aiTurnSummary,
+            aiCurrentTask: thread.aiCurrentTask,
+            aiLastUserInput: thread.aiLastUserInput,
           })
         "
         :resource-usage="props.resourceUsageForHost?.(thread.hostId)"

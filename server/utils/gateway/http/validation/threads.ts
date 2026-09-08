@@ -28,6 +28,21 @@ export const threadMetadataListSchema = z.object({
     .pipe(z.array(z.string().min(1)).min(1).max(20)),
 });
 
+const sidebarSummarySourceSchema = z
+  .object({
+    hostId: z.coerce.number().int().positive(),
+    threadId: z.string().trim().min(1).max(200),
+    goal: z.string().trim().max(600).nullable().optional().default(null),
+    turnSummary: z.string().trim().max(600).nullable().optional().default(null),
+    currentTask: z.string().trim().max(600).nullable().optional().default(null),
+    lastUserInput: z.string().trim().max(600).nullable().optional().default(null),
+  })
+  .strict();
+
+export const sidebarSummaryBatchSchema = z
+  .object({ items: z.array(sidebarSummarySourceSchema).min(1).max(20) })
+  .strict();
+
 export const threadTurnsListSchema = z.object({
   hostId: z.coerce.number().int().positive(),
   threadId: z.string().trim().min(1),

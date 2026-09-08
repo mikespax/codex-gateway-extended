@@ -2,6 +2,7 @@ import { onBeforeUnmount, onMounted, watch, type Ref } from "vue";
 import { threadTurnsFromHistory } from "~~/shared/thread-history/shape";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { requestThreadTurnsPage } from "@/stores/gateway-thread-turns/transport";
+import { requestSidebarAiSummaries } from "@/stores/gateway-thread-activity/transport";
 
 const REFRESH_INTERVAL_MS = 60_000;
 const REFRESH_AFTER_FAILURE_MS = 10_000;
@@ -64,6 +65,7 @@ export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>)
       await Promise.all(
         Array.from({ length: Math.min(MAX_CONCURRENT_REFRESHES, pending.length) }, () => worker()),
       );
+      void refreshAiSummaries(pending);
     })().finally(() => {
       refreshPromise = null;
     });
@@ -80,4 +82,30 @@ export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>)
   });
 
   return { refresh };
+
+  async function refreshAiSummaries(refreshedTargets: SidebarActivityTarget[]) {
+    const items = refreshedTargets.flatMap((target) => {
+      const summary = activity.summariesByKey[`${target.hostId}:${target.threadId}`];
+      return summary === undefined
+        ? []
+        : [
+            {
+              hostId: target.hostId,
+              threadId: target.threadId,
+              goal: summary.goalObjective ?? null,
+              turnSummary: summary.turnSummary ?? null,
+              currentTask: summary.currentOperation ?? null,
+              lastUserInput: summary.lastUserInput ?? null,
+            },
+          ];
+    });
+    if (items.length === 0) return;
+    try {
+      const result = await requestSidebarAiSummaries(items);
+      for (const summary of result.data) activity.applyAiSidebarSummary(summary);
+    } catch {
+      // AI summaries are optional. The local projection remains visible when the helper is
+      // unavailable, unauthenticated, or still warming up on the Mac.
+    }
+  }
 }
