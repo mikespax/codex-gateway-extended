@@ -8,7 +8,9 @@ import {
   requestSidebarThreadStorage,
 } from "@/stores/gateway-thread-activity/transport";
 
-const REFRESH_INTERVAL_MS = 60_000;
+// Sidebar summaries are advisory; avoid repeated remote history/AI work while keeping
+// foreground/focus refreshes immediate and failed hosts on a short retry path.
+const REFRESH_INTERVAL_MS = 5 * 60_000;
 const REFRESH_AFTER_FAILURE_MS = 10_000;
 const SIDEBAR_TURN_LIMIT = 3;
 const MAX_CONCURRENT_REFRESHES = 3;
