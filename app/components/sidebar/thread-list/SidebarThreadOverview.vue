@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SidebarThreadOverview as SidebarThreadOverviewData } from "@/utils/thread-sidebar-summary";
-import { compactSidebarGoal } from "@/utils/thread-sidebar-summary";
+import { summarizeSidebarText } from "@/utils/thread-sidebar-summary";
 import SidebarActivityLabel from "./SidebarActivityLabel.vue";
 
 const props = defineProps<{
@@ -16,8 +16,8 @@ const fields = [
 
 function displayText(field: (typeof fields)[number]) {
   const value = props.overview[field.key];
-  if (field.key === "goal") return compactSidebarGoal(value) ?? "—";
-  return value ?? "—";
+  if (field.key === "currentTask") return value ?? "—";
+  return summarizeSidebarText(value) ?? "—";
 }
 
 function fullText(field: (typeof fields)[number]) {
