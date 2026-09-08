@@ -142,6 +142,7 @@ function buildPrompt(sources: Array<SidebarSummarySource & { fingerprint: string
     "Do not use shell, filesystem, network, browser, MCP, or any other tools.",
     "Return JSON only: an array of objects with key, sourceFingerprint, goal, turnSummary, currentTask, and lastUserInput.",
     "Summarize each non-empty field in no more than 8 short words. Use concise sentence fragments.",
+    "If goal is empty, infer the likely thread goal from the other fields when useful; return null only when there is not enough context.",
     "Keep null for an empty field. Do not include credentials, tokens, customer data, markdown, or commentary.",
     JSON.stringify({ items }),
   ].join("\n");
