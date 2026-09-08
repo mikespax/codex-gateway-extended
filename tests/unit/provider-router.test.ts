@@ -94,9 +94,9 @@ void test("provider matrix enforces all three modes and quota fallback", () => {
     period: "off_peak" as const,
     containsImages: false,
     requestedOpenAiModel: "gpt-5.6-luna",
-    openRouterTextModel: "deepseek/deepseek-v4-pro",
+    openRouterTextModel: "deepseek/deepseek-v4-flash",
     openRouterVisionModel: "deepseek/deepseek-v4-flash-vision-exp",
-    directTextModel: "deepseek-v4-pro",
+    directTextModel: "deepseek-v4-flash",
     directVisionModel: "deepseek-v4-flash-vision-exp",
   };
   assert.equal(

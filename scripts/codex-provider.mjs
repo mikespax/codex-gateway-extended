@@ -104,12 +104,14 @@ function chooseRoute(state, period) {
     ? {
         provider: "deepseek",
         transport: "openrouter",
-        model: state.openrouterModels?.text || "deepseek/deepseek-v4-pro",
+        model: state.openrouterModels?.text?.includes("v4-flash")
+          ? state.openrouterModels.text
+          : "deepseek/deepseek-v4-flash",
       }
     : {
         provider: "deepseek",
         transport: "deepseek",
-        model: "deepseek-v4-pro",
+        model: "deepseek-v4-flash",
       };
 }
 

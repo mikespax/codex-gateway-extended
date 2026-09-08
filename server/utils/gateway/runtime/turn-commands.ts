@@ -57,11 +57,14 @@ export class ThreadTurnCommandService {
         );
         if (decision.transport === "openrouter") {
           updateProviderRouterState((state) => {
-            state.openrouter = "available";
-            state.openrouterLastError = null;
+            if (state.openrouter === "unknown") {
+              state.openrouter = "available";
+              state.openrouterLastError = null;
+            }
           });
         }
         logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
+          hostId: host.id,
           status: "200",
           durationMs: Date.now() - startedAt,
         });
@@ -93,6 +96,7 @@ export class ThreadTurnCommandService {
             decision,
           );
           logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
+            hostId: host.id,
             status: "200",
             durationMs: Date.now() - startedAt,
             fallbackReason: "openai_quota_exhausted",
@@ -115,6 +119,7 @@ export class ThreadTurnCommandService {
             fallbackDecision,
           );
           logProviderDecision(`turn-${clientUserMessageId}`, threadId, fallbackDecision, {
+            hostId: host.id,
             status: "200",
             durationMs: Date.now() - startedAt,
             fallbackReason: "deepseek_unavailable_hybrid_openai_fallback",
@@ -145,6 +150,7 @@ export class ThreadTurnCommandService {
               decision,
             );
             logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
+              hostId: host.id,
               status: "200",
               durationMs: Date.now() - startedAt,
               fallbackReason: creditExhausted
@@ -164,6 +170,7 @@ export class ThreadTurnCommandService {
                 fallbackDecision,
               );
               logProviderDecision(`turn-${clientUserMessageId}`, threadId, fallbackDecision, {
+                hostId: host.id,
                 status: "200",
                 durationMs: Date.now() - startedAt,
                 fallbackReason: creditExhausted

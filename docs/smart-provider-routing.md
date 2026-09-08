@@ -17,7 +17,7 @@ The Settings > Provider routing panel exposes exactly these primary modes:
   app-server has no DeepSeek key), hybrid mode may fall back to OpenAI only when the OpenAI
   allowance is not exhausted. That failover is logged and never occurs in DeepSeek-only mode. Set
   `CODEX_PROVIDER_HYBRID_OPENAI_FALLBACK=false` to make such a failure fail closed instead.
-- **DeepSeek only** — OpenAI is never selected. Text uses `deepseek-v4-pro`; image-bearing input
+- **DeepSeek only** — OpenAI is never selected. Text uses `deepseek-v4-flash`; image-bearing input
   uses `deepseek-v4-flash-vision-exp`.
 
 DeepSeek's published weekday peak windows are 01:00–04:00 UTC and 06:00–10:00 UTC. Weekends are
@@ -35,6 +35,17 @@ either provider.
 OpenRouter account credit introspection is optional: its credits endpoint requires a management
 key, so the status can remain `unknown` while routing continues. An unambiguous insufficient-credit
 failure marks OpenRouter exhausted; `Recheck OpenRouter` clears that state.
+
+Credit exhaustion is also recognized in asynchronous app-server error/completion events. Once
+exhausted, OpenRouter stays disabled across Gateway restarts until an explicit `Recheck OpenRouter`
+or `codex-provider recheck-openrouter`. Successful concurrent turns do not clear that latch.
+Replicate is not an inference transport in this router; storing its credential does not enable
+requests or spend its balance.
+
+The mobile header and desktop toolbar display the selected thread's model and the last recorded
+routing reason. This uses a bounded in-memory decision cache and existing thread metadata, with
+no remote history reads. If the decision is unavailable (including after a restart), the toolbar
+labels the model as a thread setting instead of inventing a routing reason.
 
 ## Configuration and commands
 

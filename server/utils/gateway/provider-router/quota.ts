@@ -48,6 +48,22 @@ export function classifyOpenAiFailure(error: unknown): ClassifiedUpstreamFailure
     .join(" ")
     .toLowerCase();
 
+  // Explicit throttling is not exhausted subscription credit, even when the message includes
+  // the word "usage". Provider-specific exhaustion codes remain authoritative.
+  if (
+    (code.includes("rate_limit") || /rate limit|too many requests/i.test(message)) &&
+    !code.includes("insufficient_quota") &&
+    !code.includes("quota_exhaust")
+  ) {
+    return {
+      kind: "rate_limit",
+      quotaState: "unknown",
+      retryable: true,
+      reasonCode: "rate_limit",
+      resetAt: null,
+    };
+  }
+
   if (
     code.includes("insufficient_quota") ||
     code.includes("quota_exhaust") ||

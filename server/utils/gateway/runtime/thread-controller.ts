@@ -195,9 +195,9 @@ export class ThreadController {
       };
       if (model !== null && model !== "") params.model = model;
       const resumed = await this.requestResume(params);
-      if (resumed.thread.modelProvider !== provider) {
+      if (resumed.modelProvider !== provider) {
         throw new Error(
-          `Codex app-server resumed provider ${resumed.thread.modelProvider}, expected ${provider}`,
+          `Codex app-server resumed provider ${resumed.modelProvider}, expected ${provider}`,
         );
       }
       if (snapshot !== null) {
@@ -206,7 +206,7 @@ export class ThreadController {
         // not resume the same thread again merely because its cached settings still say "unknown".
         this.setOpenSnapshot({
           ...snapshot,
-          thread: { ...resumed.thread, model: resumed.model },
+          thread: { ...resumed.thread, model: resumed.model, modelProvider: resumed.modelProvider },
           threadSettings: {
             ...(snapshot.threadSettings ?? {
               model: null,

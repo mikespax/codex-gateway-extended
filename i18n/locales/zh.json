@@ -830,6 +830,11 @@
     "zoomIn": "放大",
     "zoomOut": "缩小",
     "imageZoom": "图片缩放",
-    "resetImageView": "重置图片视图"
+    "resetImageView": "重置图片视图",
+    "routeFallback": "服务不可用 · 已回退",
+    "routeQuota": "OpenAI 额度已用尽",
+    "routeOffPeak": "DeepSeek 非高峰时段",
+    "routePeak": "高峰时段 · OpenAI",
+    "routeStored": "会话模型 · 无路由记录"
   }
 }

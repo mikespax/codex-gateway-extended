@@ -88,9 +88,10 @@ export async function sendFirebaseNotification(
     },
   );
   if (!response.ok) {
-    const details = (await response.text()).trim().slice(0, 500);
     throw new FirebaseRequestError(
-      `FCM send failed with HTTP ${response.status}${details === "" ? "" : `: ${details}`}`,
+      // Do not include the provider response body. FCM errors can echo device-token
+      // identifiers, and this message is logged by the notification dispatcher.
+      `FCM send failed with HTTP ${response.status}`,
       response.status === 408 || response.status === 429 || response.status >= 500,
     );
   }
@@ -114,9 +115,10 @@ async function firebaseAccessToken(credentials: FirebaseServiceAccount) {
   });
   const payload = oauthResponseSchema.parse(await response.json());
   if (!response.ok || payload.access_token === undefined) {
-    const description = payload.error_description?.slice(0, 500) ?? "";
     throw new FirebaseRequestError(
-      `Firebase OAuth failed with HTTP ${response.status}${description === "" ? "" : `: ${description}`}`,
+      // Keep OAuth response details out of logs; the HTTP status is sufficient for
+      // retry classification and the response may contain credential-adjacent data.
+      `Firebase OAuth failed with HTTP ${response.status}`,
       response.status === 408 || response.status === 429 || response.status >= 500,
     );
   }

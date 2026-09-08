@@ -1,5 +1,5 @@
 import type { ComposerTurnOptions, ThreadHistoryState } from "~~/shared/types";
-import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
+import { INITIAL_TURN_PAGE_LIMIT, MAX_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { threadTurnsFromHistory } from "~~/shared/thread-history/shape";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
@@ -93,10 +93,7 @@ export function createThreadOpenActions() {
       activatePendingThreadView(targetHostId, targetProjectId, threadId);
       void gateway.ensureSelectedHostModels();
       if (restoreThreadView(targetHostId, threadId)) {
-        const cachedTurnLimit = Math.max(
-          INITIAL_TURN_PAGE_LIMIT,
-          threadTurnsFromHistory(views.history).length,
-        );
+        const cachedTurnLimit = retainedTurnLimit(views.history);
         finishThreadSelection(threadId, context?.replaceRoute);
         void refreshGoalAfterOpen(targetHostId, threadId);
         requestScrollToLatest();
@@ -123,10 +120,7 @@ export function createThreadOpenActions() {
       ) {
         upsertThreadView(persistentView);
         restoreThreadView(targetHostId, threadId);
-        const cachedTurnLimit = Math.max(
-          INITIAL_TURN_PAGE_LIMIT,
-          threadTurnsFromHistory(persistentView.history).length,
-        );
+        const cachedTurnLimit = retainedTurnLimit(persistentView.history);
         rememberOpenThread(threadId);
         syncSelectedRoute({ replace: context?.replaceRoute });
         requestScrollToLatest();
@@ -523,5 +517,8 @@ async function refreshGoalAfterOpen(hostId: number, threadId: string) {
 }
 
 function retainedTurnLimit(history: ThreadHistoryState | null) {
-  return Math.max(INITIAL_TURN_PAGE_LIMIT, threadTurnsFromHistory(history).length);
+  return Math.min(
+    MAX_TURN_PAGE_LIMIT,
+    Math.max(INITIAL_TURN_PAGE_LIMIT, threadTurnsFromHistory(history).length),
+  );
 }

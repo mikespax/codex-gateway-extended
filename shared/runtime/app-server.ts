@@ -400,6 +400,7 @@ const threadResumeResultSchema = z
   .object({
     thread: appServerThreadSchema,
     model: z.string().min(1),
+    modelProvider: z.string().min(1),
     reasoningEffort: z.string().nullable(),
     serviceTier: z.string().nullable().optional(),
     approvalPolicy: z.union([

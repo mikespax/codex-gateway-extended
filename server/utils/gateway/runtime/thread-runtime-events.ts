@@ -9,6 +9,7 @@ import { applyEventToOpenSnapshot } from "./open-snapshot-events";
 import { runtimeStatusFromEvent } from "~~/shared/thread-runtime-status";
 import { idFromUnknown, recordFromUnknown } from "~~/shared/utils/records";
 import { threadRuntimeStatusHub } from "./thread-runtime-status-hub";
+import { observeProviderFailure } from "../provider-router/logging";
 
 type ThreadEventSubscriber = (event: GatewayEvent) => void;
 export type ThreadGoalResolver = () => Promise<unknown>;
@@ -25,6 +26,7 @@ class ThreadRuntimeEventBus {
     options: { resolveGoal?: ThreadGoalResolver; resolveThread?: ThreadMetadataResolver } = {},
   ) {
     const envelope = parseRpcEnvelope(payload);
+    observeProviderFailure(hostId, threadId, method, envelope.params);
     const event = gatewayEventStore.add(hostId, threadId, method, envelope);
     subAgentThreadStore.recordRuntimeEvent(hostId, threadId, method, envelope);
     threadSnapshotStore.update(hostId, threadId, (snapshot) =>

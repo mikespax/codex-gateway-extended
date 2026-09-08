@@ -1,7 +1,7 @@
 import { getProviderRouterState, updateProviderRouterState } from "./state";
 import { recordFromUnknown } from "~~/shared/utils/records";
 
-export const DIRECT_DEEPSEEK_TEXT_MODEL = "deepseek-v4-pro";
+export const DIRECT_DEEPSEEK_TEXT_MODEL = "deepseek-v4-flash";
 export const DIRECT_DEEPSEEK_VISION_MODEL = "deepseek-v4-flash-vision-exp";
 const MODEL_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
 
@@ -12,8 +12,12 @@ export function deepseekModelForImage(containsImages: boolean) {
 export function openrouterModelForImage(containsImages: boolean) {
   const cached = getProviderRouterState().openrouterModels;
   return (
-    (containsImages ? cached.vision : cached.text) ??
-    (containsImages ? "deepseek/deepseek-v4-flash-vision-exp" : "deepseek/deepseek-v4-pro")
+    (containsImages
+      ? cached.vision
+      : cached.text?.includes("v4-flash") === true
+        ? cached.text
+        : null) ??
+    (containsImages ? "deepseek/deepseek-v4-flash-vision-exp" : "deepseek/deepseek-v4-flash")
   );
 }
 
@@ -22,6 +26,7 @@ export async function refreshOpenRouterModels(force = false) {
   const cached = getProviderRouterState().openrouterModels;
   if (
     !force &&
+    cached.text?.includes("v4-flash") === true &&
     cached.fetchedAt !== null &&
     Date.now() - Date.parse(cached.fetchedAt) < MODEL_CACHE_TTL_MS
   ) {
@@ -70,10 +75,15 @@ function chooseModel(ids: string[], vision: boolean) {
     const normalized = id.toLowerCase();
     if (!normalized.includes("deepseek") || !normalized.includes("v4")) return false;
     if (vision) return normalized.includes("vision") && normalized.includes("flash");
-    return normalized.includes("pro") && !normalized.includes("vision");
+    return (
+      normalized.includes("flash") &&
+      !normalized.includes("vision") &&
+      !normalized.includes(":") &&
+      !normalized.startsWith("~")
+    );
   });
   const preferred = vision
     ? ["deepseek/deepseek-v4-flash-vision-exp"]
-    : ["deepseek/deepseek-v4-pro", "deepseek/deepseek-v4-pro-0813"];
+    : ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-flash-0731"];
   return preferred.find((id) => candidates.includes(id)) ?? candidates.sort()[0] ?? null;
 }

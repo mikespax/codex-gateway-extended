@@ -12,6 +12,7 @@ import type { ThreadListResponse } from "@/stores/gateway/types";
 import { messageFromError, sortThreads } from "@/stores/gateway/thread-utils/identity";
 import { runtimeStatusFromAppThreadStatus } from "@/stores/gateway/thread-utils/status";
 import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
+import { HOT_THREAD_LIST_LIMIT } from "~~/shared/config";
 import { captureSessionEpoch } from "@/utils/session-epoch";
 
 const THREAD_LIST_PAGE_LIMIT = 100;
@@ -19,21 +20,25 @@ const MAX_THREAD_LIST_PAGES = 20;
 const THREAD_STORAGE_REFRESH_DELAYS_MS = [750, 1_500, 3_000, 6_000, 12_000] as const;
 
 /**
- * The app-server keeps older threads behind cursors.  The gateway sidebar has
- * no separate "load older" control, so aggregate the bounded catalog here.
- * This makes pre-existing CLI/VS Code chats discoverable after adding a host.
+ * Keep the normal sidebar path focused on the user's hot set. Older threads remain addressable by
+ * their pinned IDs and by explicit search, which is the only path that should walk the full cursor
+ * chain and populate the historical project index.
  */
 async function listAllThreads(
   query: Record<string, unknown>,
   sessionIsCurrent: () => boolean,
+  options: { allPages?: boolean } = {},
 ): Promise<ThreadListResponse | null> {
+  const allPages = options.allPages === true;
+  const limit = allPages ? THREAD_LIST_PAGE_LIMIT : HOT_THREAD_LIST_LIMIT;
   const threadsById = new Map<string, GatewayThread>();
   let firstResponse: ThreadListResponse | null = null;
   let cursor: string | null = null;
 
-  for (let page = 0; page < MAX_THREAD_LIST_PAGES; page += 1) {
+  for (let page = 0; page < (allPages ? MAX_THREAD_LIST_PAGES : 1); page += 1) {
+    const requestQuery = { ...query, limit };
     const response: ThreadListResponse = await gatewayApi<ThreadListResponse>("/api/threads", {
-      query: cursor === null ? query : { ...query, cursor },
+      query: cursor === null ? requestQuery : { ...requestQuery, cursor },
     });
     if (!sessionIsCurrent()) return null;
     firstResponse ??= response;
@@ -86,10 +91,7 @@ export function createThreadListActions() {
   async function loadHostOverview(hostId: number) {
     const catalog = useGatewayCatalogStore();
     const sessionIsCurrent = captureSessionEpoch();
-    const response = await listAllThreads(
-      { hostId, limit: THREAD_LIST_PAGE_LIMIT },
-      sessionIsCurrent,
-    );
+    const response = await listAllThreads({ hostId }, sessionIsCurrent);
     if (response === null) return false;
     if (response.projects !== undefined) catalog.mergeProjects(response.projects);
     applyProjectDirectoryAvailability(response);
@@ -139,11 +141,12 @@ export function createThreadListActions() {
       views.loading = true;
       bootstrap.clearError();
       try {
-        const query: Record<string, unknown> = { hostId, limit: THREAD_LIST_PAGE_LIMIT };
+        const searchMode = searchTerm.trim() !== "";
+        const query: Record<string, unknown> = { hostId };
         if (projectId !== null) query.projectId = projectId;
         if (projectCwd !== undefined && projectCwd !== "") query.cwd = projectCwd;
         if (searchTerm !== "") query.searchTerm = searchTerm;
-        const response = await listAllThreads(query, sessionIsCurrent);
+        const response = await listAllThreads(query, sessionIsCurrent, { allPages: searchMode });
         if (response === null) return;
         if (navigation.selectedHostId !== hostId || navigation.selectedProjectId !== projectId)
           return;

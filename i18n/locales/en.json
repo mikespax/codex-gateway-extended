@@ -830,6 +830,11 @@
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "imageZoom": "Image zoom",
-    "resetImageView": "Reset image view"
+    "resetImageView": "Reset image view",
+    "routeFallback": "Provider unavailable · fallback",
+    "routeQuota": "OpenAI allowance exhausted",
+    "routeOffPeak": "DeepSeek off-peak",
+    "routePeak": "Peak pricing · OpenAI",
+    "routeStored": "Thread model · route not recorded"
   }
 }
