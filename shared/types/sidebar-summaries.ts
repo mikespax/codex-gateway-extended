@@ -1,4 +1,7 @@
 /** The small, redacted sidebar context sent to the optional Codex summarizer. */
+export const SIDEBAR_SUMMARY_BATCH_LIMIT = 20;
+export const SIDEBAR_SUMMARY_FIELD_MAX_LENGTH = 600;
+
 export interface SidebarSummarySource {
   hostId: number;
   threadId: string;
@@ -25,10 +28,10 @@ export function sidebarSummarySourceFingerprint(input: SidebarSummarySource) {
   const source = JSON.stringify([
     input.hostId,
     input.threadId,
-    input.goal ?? "",
-    input.turnSummary ?? "",
-    input.currentTask ?? "",
-    input.lastUserInput ?? "",
+    fingerprintValue(input.goal),
+    fingerprintValue(input.turnSummary),
+    fingerprintValue(input.currentTask),
+    fingerprintValue(input.lastUserInput),
   ]);
   // Keep stale-response guards opaque. Returning the source JSON here would echo user text in
   // the API response and browser state, including a value that may contain sensitive content.
@@ -40,4 +43,8 @@ export function sidebarSummarySourceFingerprint(input: SidebarSummarySource) {
     second = Math.imul(second ^ code, 1_099_511_627) >>> 0;
   }
   return `v1-${first.toString(16)}-${second.toString(16)}`;
+}
+
+function fingerprintValue(value: string | null) {
+  return (value ?? "").replace(/\s+/g, " ").trim().slice(0, SIDEBAR_SUMMARY_FIELD_MAX_LENGTH);
 }

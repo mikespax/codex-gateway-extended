@@ -1,4 +1,5 @@
 import { onBeforeUnmount, onMounted, watch, type Ref } from "vue";
+import { SIDEBAR_SUMMARY_BATCH_LIMIT } from "~~/shared/types";
 import { threadTurnsFromHistory } from "~~/shared/thread-history/shape";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { requestThreadTurnsPage } from "@/stores/gateway-thread-turns/transport";
@@ -126,8 +127,19 @@ export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>)
     });
     if (items.length === 0) return;
     try {
-      const result = await requestSidebarAiSummaries(items);
-      for (const summary of result.data) activity.applyAiSidebarSummary(summary);
+      const results = await Promise.all(
+        Array.from({ length: Math.ceil(items.length / SIDEBAR_SUMMARY_BATCH_LIMIT) }, (_, index) =>
+          requestSidebarAiSummaries(
+            items.slice(
+              index * SIDEBAR_SUMMARY_BATCH_LIMIT,
+              (index + 1) * SIDEBAR_SUMMARY_BATCH_LIMIT,
+            ),
+          ),
+        ),
+      );
+      for (const result of results) {
+        for (const summary of result.data) activity.applyAiSidebarSummary(summary);
+      }
     } catch {
       // AI summaries are optional. The local projection remains visible when the helper is
       // unavailable, unauthenticated, or still warming up on the Mac.
