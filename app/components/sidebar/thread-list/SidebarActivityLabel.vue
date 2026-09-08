@@ -5,6 +5,7 @@ import { useResizeObserver } from "@vueuse/core";
 const props = withDefaults(
   defineProps<{
     text: string;
+    title?: string | null;
     testId?: string;
   }>(),
   { testId: "thread-activity-summary" },
@@ -27,7 +28,9 @@ watch(() => props.text, measureOverflow, { immediate: true });
 
 const trackStyle = computed(() => ({
   "--gateway-sidebar-activity-distance": `${overflowPixels.value}px`,
-  "--gateway-sidebar-activity-duration": `${Math.max(8, Math.min(24, overflowPixels.value / 7))}s`,
+  // Keep a consistent, deliberately slow pixel rate. A fixed duration made long goals
+  // accelerate while short goals crawled, which read as jittery when rows updated together.
+  "--gateway-sidebar-activity-duration": `${Math.max(28, overflowPixels.value / 2)}s`,
 }));
 </script>
 
@@ -36,8 +39,8 @@ const trackStyle = computed(() => ({
     ref="viewport"
     :data-testid="props.testId"
     class="block min-w-0 flex-1 overflow-hidden text-[0.6875rem] text-ink-muted"
-    :title="props.text"
-    :aria-label="props.text"
+    :title="props.title ?? props.text"
+    :aria-label="props.title ?? props.text"
   >
     <span
       ref="content"

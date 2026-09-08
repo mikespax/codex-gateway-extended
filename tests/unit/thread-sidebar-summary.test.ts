@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  compactSidebarGoal,
   compactSidebarSummary,
+  currentOperationFromTurns,
   currentOperationFromThread,
   lastCompletedTurnSummaryFromThread,
   lastUserInputFromThread,
@@ -53,6 +55,15 @@ void test("sidebar summaries preserve the full goal sentence", () => {
   );
 });
 
+void test("goal labels stay compact while the full objective remains available to the tooltip", () => {
+  assert.equal(
+    compactSidebarGoal("Please migrate all Codex threads off the VPS"),
+    "migrate all Codex threads",
+  );
+  assert.equal(compactSidebarGoal("Repair Gateway"), "Repair Gateway");
+  assert.equal(compactSidebarGoal(""), null);
+});
+
 void test("operation labels stay descriptive and do not expose command contents", () => {
   assert.equal(
     operationForItem({ type: "commandExecution", command: "cat secret.txt" }),
@@ -96,6 +107,15 @@ void test("thread list summaries use its latest goal and active operation", () =
     ],
   });
   assert.equal(currentOperationFromThread(runningCommand), "Running a command");
+  assert.equal(
+    currentOperationFromTurns([
+      turn({
+        status: "inProgress",
+        items: [{ id: "cmd-2", type: "commandExecution", command: "pnpm test" }],
+      }),
+    ]),
+    "Running a command",
+  );
 });
 
 void test("thread overview captures the last completed turn and latest user input", () => {

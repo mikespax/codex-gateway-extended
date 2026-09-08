@@ -24,6 +24,7 @@ import NewThreadDialog from "./NewThreadDialog.vue";
 import HostTree from "./host-tree/HostTree.vue";
 import PinnedThreadList from "./thread-list/PinnedThreadList.vue";
 import RecentThreadList from "./thread-list/RecentThreadList.vue";
+import { useSidebarActivityRefresh } from "./thread-list/useSidebarActivityRefresh";
 import ThreadRenameDialog from "./thread-list/ThreadRenameDialog.vue";
 import ThreadMoveDialog from "./thread-list/ThreadMoveDialog.vue";
 import SidebarScrollArea from "./SidebarScrollArea.vue";
@@ -123,6 +124,20 @@ const inactivePinnedThreads = computed(() =>
 const activePinnedThreads = computed(() =>
   pinnedThreads.value.filter((thread) => !isInactivePinnedThread(thread)),
 );
+
+const sidebarActivityTargets = computed(() => {
+  const seen = new Set<string>();
+  const result: Array<{ hostId: number; threadId: string }> = [];
+  for (const thread of [...pinnedThreads.value, ...recentThreads.value]) {
+    const threadId = String(thread.threadId);
+    const key = `${thread.hostId}:${threadId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ hostId: thread.hostId, threadId });
+  }
+  return result;
+});
+useSidebarActivityRefresh(sidebarActivityTargets);
 const hostTreeController = computed<HostTreeController>(() => ({
   hosts: sidebarTree.hosts.value,
   availableProjectsByHost: sidebarTree.availableProjectsByHost.value,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SidebarThreadOverview as SidebarThreadOverviewData } from "@/utils/thread-sidebar-summary";
+import { compactSidebarGoal } from "@/utils/thread-sidebar-summary";
 import SidebarActivityLabel from "./SidebarActivityLabel.vue";
 
 const props = defineProps<{
@@ -12,6 +13,16 @@ const fields = [
   { key: "currentTask", labelKey: "app.threadSidebarCurrentTask" },
   { key: "lastUserInput", labelKey: "app.threadSidebarLastUserInput" },
 ] as const;
+
+function displayText(field: (typeof fields)[number]) {
+  const value = props.overview[field.key];
+  if (field.key === "goal") return compactSidebarGoal(value) ?? "—";
+  return value ?? "—";
+}
+
+function fullText(field: (typeof fields)[number]) {
+  return props.overview[field.key] ?? "—";
+}
 </script>
 
 <template>
@@ -23,7 +34,8 @@ const fields = [
     <div v-for="field in fields" :key="field.key" class="flex min-w-0 items-baseline gap-1">
       <span class="shrink-0 text-ink-faint">{{ $t(field.labelKey) }}:</span>
       <SidebarActivityLabel
-        :text="props.overview[field.key] ?? '—'"
+        :text="displayText(field)"
+        :title="fullText(field)"
         :test-id="`thread-sidebar-overview-${field.key}`"
       />
     </div>
