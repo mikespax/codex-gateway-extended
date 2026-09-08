@@ -20,6 +20,7 @@ import {
   lastCompletedTurnSummaryFromTurn,
   lastUserInputFromThread,
   lastUserInputFromTurn,
+  threadGoalSummaryFromTurns,
   threadGoalSummaryFromThread,
 } from "@/utils/thread-sidebar-summary";
 
@@ -194,9 +195,11 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
       .map((turn) => lastUserInputFromTurn(turn))
       .find((input): input is string => input !== undefined);
     const currentOperation = currentOperationFromTurns(turns);
+    const goal = threadGoalSummaryFromTurns(turns);
     upsertSummary({
       ...existing,
       currentOperation,
+      ...(goal !== undefined ? { goalObjective: goal.objective, goalStatus: goal.status } : {}),
       ...(turnSummary !== undefined ? { turnSummary } : {}),
       ...(lastUserInput !== undefined ? { lastUserInput } : {}),
     });

@@ -10,6 +10,7 @@ import {
   operationForItem,
   sidebarOverviewForThread,
   sidebarSummaryForThread,
+  threadGoalSummaryFromTurns,
   threadGoalSummaryFromThread,
 } from "../../app/utils/thread-sidebar-summary";
 import type { AppServerThread } from "../../shared/types";
@@ -115,6 +116,22 @@ void test("thread list summaries use its latest goal and active operation", () =
       }),
     ]),
     "Running a command",
+  );
+  assert.deepEqual(
+    threadGoalSummaryFromTurns([
+      turn({
+        status: "completed",
+        items: [
+          {
+            id: "goal-2",
+            type: "threadGoal",
+            objective: "Keep the sidebar summaries current",
+            status: "active",
+          },
+        ],
+      }),
+    ]),
+    { objective: "Keep the sidebar summaries current", status: "active" },
   );
 });
 
