@@ -34,6 +34,7 @@ import { clearThreadCompletionAttention } from "@/stores/gateway/thread-runtime/
 import { captureSessionEpoch } from "@/utils/session-epoch";
 
 const previewLoadTokens = new Map<string, symbol>();
+const AUTHORITATIVE_VIEW_MAX_AGE_MS = 5 * 60_000;
 interface EventGapRecovery {
   promise: Promise<void>;
   sessionIsCurrent: () => boolean;
@@ -77,7 +78,10 @@ export function createThreadOpenActions() {
         navigation.selectedHostId === targetHostId &&
         navigation.selectedThreadId === threadId &&
         views.currentThread !== null &&
-        views.history !== null
+        views.history !== null &&
+        views.authoritative &&
+        (views.authoritativeAt === 0 ||
+          Date.now() - views.authoritativeAt < AUTHORITATIVE_VIEW_MAX_AGE_MS)
       ) {
         void gateway.ensureSelectedHostModels();
         finishThreadSelection(threadId, context?.replaceRoute);
@@ -118,7 +122,9 @@ export function createThreadOpenActions() {
         navigation.selectedHostId === targetHostId &&
         navigation.selectedThreadId === threadId
       ) {
-        upsertThreadView(persistentView);
+        // Hydrate the old browser snapshot without extending its TTL. If the live activation is
+        // unavailable, the same stale record must not be refreshed indefinitely as if it were new.
+        upsertThreadView(persistentView, { persist: false });
         restoreThreadView(targetHostId, threadId);
         const cachedTurnLimit = retainedTurnLimit(persistentView.history);
         rememberOpenThread(threadId);
@@ -194,6 +200,14 @@ export function createThreadOpenActions() {
           if (!panelStillOpen) useGatewayRealtimeStore().cancelThreadEvents(hostId, threadId);
           return undefined;
         }
+        if (result.stale === true) {
+          patchThreadView(hostId, threadId, {
+            projectId: result.projectId ?? context.projectId ?? existing?.projectId ?? null,
+            loading: false,
+            error: gateway.t("app.latestHistoryUnavailable"),
+          });
+          return views.threadViews[key];
+        }
         upsertThreadView({
           hostId,
           projectId: result.projectId ?? context.projectId ?? null,
@@ -257,9 +271,19 @@ export function createThreadOpenActions() {
           !sessionIsCurrent() ||
           views.viewEpoch !== viewEpoch ||
           navigation.selectedHostId !== hostId ||
-          navigation.selectedThreadId !== threadId ||
-          (result.eventEpoch === views.eventEpoch && result.lastEventId < views.lastEventId)
+          navigation.selectedThreadId !== threadId
         )
+          return;
+        if (result.stale === true) {
+          views.resetCurrentView();
+          gateway.setError(gateway.t("app.latestHistoryUnavailable"), {
+            hostId,
+            projectId,
+            threadId,
+          });
+          return;
+        }
+        if (result.eventEpoch === views.eventEpoch && result.lastEventId < views.lastEventId)
           return;
         applyThreadSnapshotResult(threadId, result);
         cacheSelectedThreadView();
@@ -397,6 +421,21 @@ async function recoverThreadSnapshot(hostId: number, threadId: string) {
       return;
     }
 
+    if (result.stale === true) {
+      const message = gateway.t("app.latestHistoryUnavailable");
+      if (stillSelected) {
+        views.resetCurrentView();
+        gateway.setError(message, {
+          hostId,
+          projectId: existing?.projectId ?? null,
+          threadId,
+        });
+      } else if (retainedView !== undefined) {
+        patchThreadView(hostId, threadId, { loading: false, error: message });
+      }
+      return;
+    }
+
     if (stillSelected) {
       // A gap is an explicit declaration that incremental state is incomplete. Replace it with
       // the authoritative snapshot even if its event id is lower after a server restart; the
@@ -458,12 +497,17 @@ async function syncOpenThreadFromServer(input: {
   gateway.clearError();
   try {
     const result = await requestActivateThreadSnapshot(input);
-    if (
-      !sessionIsCurrent() ||
-      !isCurrentViewTransition(input.viewEpoch) ||
-      (result.eventEpoch === views.eventEpoch && result.lastEventId < views.lastEventId)
-    )
+    if (!sessionIsCurrent() || !isCurrentViewTransition(input.viewEpoch)) return;
+    if (result.stale === true) {
+      views.resetCurrentView();
+      gateway.setError(gateway.t("app.latestHistoryUnavailable"), {
+        hostId: input.hostId,
+        projectId: input.projectId,
+        threadId: input.threadId,
+      });
       return;
+    }
+    if (result.eventEpoch === views.eventEpoch && result.lastEventId < views.lastEventId) return;
     applyThreadSnapshotResult(input.threadId, result);
     cacheSelectedThreadView();
     finishThreadSelection(input.threadId, input.replaceRoute);

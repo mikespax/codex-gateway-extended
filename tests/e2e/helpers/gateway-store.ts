@@ -126,6 +126,8 @@ export async function seedGatewayThread(page: Page, input: SeedGatewayThreadInpu
     navigation.selectedThreadId = threadId;
     const hasThread = threadId !== null && threadId !== "";
     views.currentThread = hasThread ? input.currentThread : null;
+    views.authoritative = hasThread;
+    views.authoritativeAt = hasThread ? Date.now() : 0;
     views.setHistory(input.history ?? (hasThread ? input.defaultHistory : null));
     views.events = input.events ?? [];
     views.lastEventId = input.lastEventId ?? views.lastEventId;

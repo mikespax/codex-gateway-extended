@@ -41,6 +41,7 @@ const emit = defineEmits<{
     :host-id="hostId"
     :thread-id="threadId"
     :user-message-variant="props.row.userMessageVariant"
+    :show-inline-images="props.row.showInlineImages"
     :turn-timing="props.row.turnTiming"
     :agent-actions-available="props.row.agentActionsAvailable"
     :sent-at="props.row.sentAt"

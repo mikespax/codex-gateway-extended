@@ -8,6 +8,7 @@ const props = defineProps<{
   item: ThreadHistoryItem;
   hostId: number | null;
   max?: number;
+  show?: boolean;
 }>();
 
 const references = computed(() => threadImageReferences(props.item).slice(0, props.max ?? 4));
@@ -22,7 +23,10 @@ const images = computed(() =>
 </script>
 
 <template>
-  <div v-if="images.length" class="grid max-w-3xl grid-cols-1 gap-2 sm:grid-cols-2">
+  <div
+    v-if="props.show === true && images.length"
+    class="grid max-w-3xl grid-cols-1 gap-2 sm:grid-cols-2"
+  >
     <ThreadImageAttachment
       v-for="image in images"
       :key="image.id"

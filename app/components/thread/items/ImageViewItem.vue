@@ -8,6 +8,7 @@ import { threadImageReferences } from "@/utils/thread-images";
 const props = defineProps<{
   item: ThreadHistoryItem;
   hostId: number | null;
+  showInlineImages?: boolean;
 }>();
 
 const { t } = useI18n();
@@ -25,7 +26,11 @@ const label = computed(
       <span class="min-w-0 truncate">{{ label }}</span>
     </div>
     <div class="max-w-3xl">
-      <ThreadImageReferences :item="item" :host-id="hostId" />
+      <ThreadImageReferences
+        :item="item"
+        :host-id="hostId"
+        :show="props.showInlineImages === true"
+      />
       <div
         v-if="references.length === 0"
         class="flex min-h-20 items-center gap-2 rounded-lg border border-hairline bg-surface px-3 py-2 text-sm text-ink-muted"

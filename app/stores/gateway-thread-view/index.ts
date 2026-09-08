@@ -19,6 +19,8 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
   const viewEpoch = ref(0);
   const currentThread = ref<GatewayThread | null>(null);
   const history = ref<ThreadHistoryState | null>(null);
+  const authoritative = ref(true);
+  const authoritativeAt = ref(0);
   const timelineTurns = ref<ThreadTimelineTurn[]>([]);
   const events = ref<GatewayEvent[]>([]);
   const loading = ref(false);
@@ -63,6 +65,8 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
   function resetCurrentView() {
     currentThread.value = null;
     history.value = null;
+    authoritative.value = false;
+    authoritativeAt.value = 0;
     timelineTurns.value = [];
     events.value = [];
     loading.value = false;
@@ -88,6 +92,8 @@ export const useGatewayThreadViewStore = defineStore("gateway-thread-view", () =
     viewEpoch,
     currentThread,
     history,
+    authoritative,
+    authoritativeAt,
     timelineTurns,
     events,
     loading,

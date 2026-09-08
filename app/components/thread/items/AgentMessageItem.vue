@@ -12,6 +12,7 @@ import type { DisplayedTurnTiming } from "@/utils/turn-timing";
 const props = defineProps<{
   item: ThreadHistoryItem;
   hostId: number | null;
+  showInlineImages?: boolean;
   turnTiming?: DisplayedTurnTiming | null;
   agentActionsAvailable?: boolean;
   sentAt?: number | string | null;
@@ -30,7 +31,11 @@ const hasFooter = computed(
       class="min-w-0 w-full gap-0 overflow-visible leading-8 text-ink"
       style="font-size: var(--chat-message-font-size, 0.9375rem)"
     >
-      <ThreadImageReferences :item="item" :host-id="hostId" />
+      <ThreadImageReferences
+        :item="item"
+        :host-id="hostId"
+        :show="props.showInlineImages === true"
+      />
       <MarkdownContent :content="text" :streaming="inProgress" />
       <MessageTimestamp
         v-if="props.sentAt != null && !inProgress"

@@ -11,6 +11,7 @@ import type { ThreadHistoryItem } from "~~/shared/types";
 const props = defineProps<{
   item: ThreadHistoryItem;
   hostId: number | null;
+  showInlineImages?: boolean;
   variant?: "normal" | "steer";
   sentAt?: number | string | null;
 }>();
@@ -39,7 +40,11 @@ const text = computed(() => threadItemText(props.item));
           t("app.steeredConversation")
         }}</Badge>
       </div>
-      <ThreadImageReferences :item="item" :host-id="hostId" />
+      <ThreadImageReferences
+        :item="item"
+        :host-id="hostId"
+        :show="props.showInlineImages !== false"
+      />
       <MarkdownContent v-if="text" :content="text" compact />
       <div v-if="props.sentAt != null" class="flex justify-end">
         <MessageTimestamp :value="props.sentAt" />

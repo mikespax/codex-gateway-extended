@@ -43,6 +43,7 @@ export type ThreadTimelineRow =
       userMessageVariant: "normal" | "steer";
       turnTiming: DisplayedTurnTiming | null;
       agentActionsAvailable: boolean;
+      showInlineImages: boolean;
       sentAt: number | string | null;
       turnIsActive: boolean;
     }
@@ -72,7 +73,7 @@ export interface ThreadTimelineTurnState {
 // Every visible entry is a direct row of the Agent timeline. Do not wrap intermediate items in a
 // second virtualizer: two height caches sharing one scroll element can leave stale blank space on
 // WebKit. Collapsing omits routine intermediate rows from this flat model, while preserving
-// screenshot rows as small inline evidence previews.
+// screenshot rows as compact evidence placeholders.
 export function buildThreadTimelineRows(input: {
   threadId: string | null;
   turns: ThreadTimelineTurnState[];
@@ -141,8 +142,8 @@ export function buildThreadTimelineRows(input: {
         }
       } else {
         // Screenshots are useful evidence, not routine implementation chatter. Keep their
-        // compact inline preview visible even while the surrounding intermediate steps stay
-        // collapsed behind the working line.
+        // compact row visible even while the surrounding intermediate steps stay collapsed behind
+        // the working line. The actual image is only loaded for a turn that is waiting for input.
         const inlineImages = intermediatePresentation.items.filter(
           (item) => item.type === "imageView",
         );
@@ -339,9 +340,38 @@ function appendItemRows(
       userMessageVariant: userMessageVariant(item, sections),
       turnTiming: item === timingTarget ? timing : null,
       agentActionsAvailable: item === timingTarget && agentActionsAvailable,
+      showInlineImages: shouldShowInlineImages(section, sections.items),
       sentAt: messageTimestamp(item, turn),
       turnIsActive: sections.turnIsActive,
     });
+  });
+}
+
+export function shouldShowInlineImages(
+  section: ThreadTimelineItemSection,
+  items: ThreadTimelineItem[],
+) {
+  return section === "user" || hasPendingUserInput(items);
+}
+
+function hasPendingUserInput(items: ThreadTimelineItem[]) {
+  return items.some((item) => {
+    const requestId = item.requestId ?? item.pendingApproval?.requestId;
+    if (requestId === null || requestId === undefined || String(requestId).trim() === "") {
+      return false;
+    }
+    return [
+      "attestationRequest",
+      "chatgptAuthTokensRefreshRequest",
+      "commandExecution",
+      "dynamicToolClientRequest",
+      "fileChange",
+      "hookPrompt",
+      "mcpElicitationRequest",
+      "permissionsRequest",
+      "requestUserInput",
+      "serverRequest",
+    ].includes(item.type);
   });
 }
 
@@ -413,6 +443,7 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.section === right.section &&
       left.userMessageVariant === right.userMessageVariant &&
       left.agentActionsAvailable === right.agentActionsAvailable &&
+      left.showInlineImages === right.showInlineImages &&
       left.sentAt === right.sentAt &&
       left.turnIsActive === right.turnIsActive &&
       sameTurnTiming(left.turnTiming, right.turnTiming)

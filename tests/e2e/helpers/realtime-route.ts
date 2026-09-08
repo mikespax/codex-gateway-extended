@@ -29,6 +29,7 @@ export interface MockThreadSnapshotInput {
       lastEventId?: number;
       eventEpoch?: string;
       runtimeStatus?: "idle" | "running" | "completed" | "failed" | "interrupted" | null;
+      stale?: boolean;
     }
   >;
 }
@@ -268,6 +269,7 @@ function handleThreadActivate(
       history: projectThreadTimelineHistory(
         snapshot.history ?? { thread: { id: message.threadId, turns: [] } },
       ),
+      ...(snapshot.stale === true ? { stale: true } : {}),
       runtimeStatus: snapshot.runtimeStatus ?? null,
       projectId: snapshot.projectId ?? null,
       project: snapshot.project ?? null,

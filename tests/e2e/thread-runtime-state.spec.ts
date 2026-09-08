@@ -483,6 +483,8 @@ test("accepted send stays with its original thread after immediate navigation", 
     driver.navigation.selectedThreadId = nextThreadId;
     driver.views.currentThread = view.currentThread;
     driver.views.history = view.history;
+    driver.views.authoritative = true;
+    driver.views.authoritativeAt = Date.now();
     driver.views.timelineTurns = view.timelineTurns;
     driver.views.events = view.events;
     driver.views.loading = true;

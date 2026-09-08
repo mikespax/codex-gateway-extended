@@ -46,6 +46,8 @@ export interface ThreadOpenResult {
   hostId: number;
   thread: GatewayThread;
   history: ThreadTimelineHistoryState;
+  /** True when the Gateway could only return a retained snapshot after live refresh failed. */
+  stale?: boolean;
   lastEventId: number;
   eventEpoch: string;
   runtimeStatus?: ThreadRuntimeStatus | null;

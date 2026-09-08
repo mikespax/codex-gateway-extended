@@ -156,9 +156,7 @@ test("same-page thread switches retain the loaded history depth", async ({ page 
   ]);
 });
 
-test("IndexedDB restores a thread immediately and then accepts the authoritative snapshot", async ({
-  page,
-}) => {
+test("a cached thread stays hidden until the authoritative snapshot arrives", async ({ page }) => {
   await openApp(page);
   const threadId = "e2e-indexeddb-stale-while-revalidate";
   const cachedHistory = {
@@ -180,11 +178,16 @@ test("IndexedDB restores a thread immediately and then accepts the authoritative
     views.cacheSelectedThreadView();
   });
   await expect
-    .poll(() => indexedDbContains(page, "indexeddb cached turn"), { timeout: 5_000 })
+    .poll(() =>
+      page.evaluate(
+        (threadId) => Boolean(window.__codexGatewayE2e?.views.threadViews[`1:${threadId}`]),
+        threadId,
+      ),
+    )
     .toBe(true);
 
   await installRealtimeThreadSnapshotMock(page, {
-    responseDelayMs: 1_500,
+    responseDelayMs: 4_000,
     snapshots: {
       [threadId]: {
         thread: { id: threadId, name: "Persistent Cache" },
@@ -197,25 +200,80 @@ test("IndexedDB restores a thread immediately and then accepts the authoritative
     const driver = window.__codexGatewayE2e;
     if (!driver) throw new Error("Gateway E2E driver is unavailable");
     const startedAt = performance.now();
-    driver.views.threadViews = {};
+    driver.bootstrap.error = null;
     driver.views.resetCurrentView();
     driver.navigation.selectedThreadId = null;
     await driver.views.openThread(threadId, { hostId: 1, projectId: 1 });
     return {
       elapsedMs: performance.now() - startedAt,
       history: JSON.stringify(driver.views.history),
+      authoritative: driver.views.authoritative,
     };
   }, threadId);
 
   expect(restored.elapsedMs).toBeLessThan(1_000);
   expect(restored.history).toContain("indexeddb cached turn");
+  expect(restored.authoritative).toBe(false);
+  await expect(
+    page.getByTestId("chat-scroll-area").getByText(/Loading remote threads|正在加载远端会话/),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("chat-main-pane")
+      .getByText(/indexeddb cached turn 001/)
+      .first(),
+  ).toBeHidden();
   await expect.poll(() => threadActivateRequests(page).then((requests) => requests.length)).toBe(1);
   await expect
     .poll(
       () => page.evaluate(() => JSON.stringify(window.__codexGatewayE2e?.views.history ?? null)),
-      { timeout: 5_000 },
+      { timeout: 8_000 },
     )
     .toContain("server refreshed turn");
+  await expect(page.getByText(/server refreshed turn 001/)).toBeVisible();
+});
+
+test("a stale Gateway fallback is never rendered as current history", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-stale-gateway-fallback";
+  await seedGatewayThread(page, {
+    projectId: 1,
+    currentThread: null,
+    history: null,
+  });
+  await installRealtimeThreadSnapshotMock(page, {
+    snapshots: {
+      [threadId]: {
+        thread: { id: threadId, name: "Stale fallback" },
+        history: {
+          thread: { id: threadId, turns: buildTextTurns(1, 1, "stale fallback turn") },
+        },
+        projectId: 1,
+        stale: true,
+      },
+    },
+  });
+
+  const state = await page.evaluate(async (threadId) => {
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    driver.navigation.selectedThreadId = null;
+    driver.views.resetCurrentView();
+    await driver.views.openThread(threadId, { hostId: 1, projectId: 1 });
+    return {
+      history: driver.views.history,
+      authoritative: driver.views.authoritative,
+      selectedThreadId: driver.navigation.selectedThreadId,
+    };
+  }, threadId);
+
+  expect(state.history).toBeNull();
+  expect(state.authoritative).toBe(false);
+  expect(state.selectedThreadId).toBe(threadId);
+  await expect(page.getByText("stale fallback turn", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByTestId("chat-scroll-area").getByText(/Latest history is unavailable/),
+  ).toBeVisible();
 });
 
 test("event-gap recovery retains the loaded history depth", async ({ page }) => {
@@ -261,34 +319,6 @@ test("event-gap recovery retains the loaded history depth", async ({ page }) => 
     .poll(() => page.evaluate(() => window.__codexGatewayE2e?.views.history?.thread.turns.length))
     .toBe(5);
 });
-
-function indexedDbContains(page: Page, marker: string) {
-  return page.evaluate(async (marker) => {
-    const databases = await indexedDB.databases();
-    if (!databases.some((database) => database.name === "codex-gateway-thread-view-cache")) {
-      return false;
-    }
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("codex-gateway-thread-view-cache");
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-    });
-    try {
-      if (!database.objectStoreNames.contains("threadViews")) return false;
-      const records = await new Promise<unknown[]>((resolve, reject) => {
-        const request = database
-          .transaction("threadViews", "readonly")
-          .objectStore("threadViews")
-          .getAll();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error ?? new Error("IndexedDB read failed"));
-      });
-      return JSON.stringify(records).includes(marker);
-    } finally {
-      database.close();
-    }
-  }, marker);
-}
 
 function selectedTimelineUsesCachedReference(page: Page, threadId: string) {
   return page.evaluate((threadId) => {
