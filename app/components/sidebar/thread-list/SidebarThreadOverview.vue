@@ -31,13 +31,18 @@ function fullText(field: (typeof fields)[number]) {
     class="grid min-w-0 gap-y-0.5 text-[0.6875rem] leading-4"
     :aria-label="$t('app.threadSidebarOverview')"
   >
-    <div v-for="field in fields" :key="field.key" class="flex min-w-0 items-baseline gap-1">
-      <span class="shrink-0 text-ink-faint">{{ $t(field.labelKey) }}:</span>
-      <SidebarActivityLabel
-        :text="displayText(field)"
-        :title="fullText(field)"
-        :test-id="`thread-sidebar-overview-${field.key}`"
-      />
-    </div>
+    <template v-for="field in fields" :key="field.key">
+      <div
+        v-if="field.key !== 'goal' || props.overview.goal !== null"
+        class="flex min-w-0 items-baseline gap-1"
+      >
+        <span class="shrink-0 text-ink-faint">{{ $t(field.labelKey) }}:</span>
+        <SidebarActivityLabel
+          :text="displayText(field)"
+          :title="fullText(field)"
+          :test-id="`thread-sidebar-overview-${field.key}`"
+        />
+      </div>
+    </template>
   </div>
 </template>

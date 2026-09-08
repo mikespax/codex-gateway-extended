@@ -14,6 +14,7 @@ const props = withDefaults(
 const viewport = ref<HTMLElement | null>(null);
 const content = ref<HTMLElement | null>(null);
 const overflowPixels = ref(0);
+const MARQUEE_SPEED_MULTIPLIER = 1.3;
 
 function measureOverflow() {
   void nextTick(() => {
@@ -28,9 +29,9 @@ watch(() => props.text, measureOverflow, { immediate: true });
 
 const trackStyle = computed(() => ({
   "--gateway-sidebar-activity-distance": `${overflowPixels.value}px`,
-  // Keep a consistent, deliberately slow pixel rate. A fixed duration made long goals
-  // accelerate while short goals crawled, which read as jittery when rows updated together.
-  "--gateway-sidebar-activity-duration": `${Math.max(28, overflowPixels.value / 2)}s`,
+  // Keep a consistent, deliberately slow pixel rate, then make every overflowing line 30% faster.
+  // Scaling the whole duration preserves the same proportional pauses at either end.
+  "--gateway-sidebar-activity-duration": `${Math.max(28, overflowPixels.value / 2) / MARQUEE_SPEED_MULTIPLIER}s`,
 }));
 </script>
 
