@@ -75,6 +75,10 @@ test("uses the mobile layout with hidden sidebar and usable composer shell", asy
 
   await page.getByTestId("mobile-sidebar-toggle").click();
   await expect(page.getByTestId("settings-toggle")).toBeVisible();
+  const sidebarSheet = page.locator('[data-slot="sheet-content"][data-side="left"]');
+  const sidebarBox = await sidebarSheet.boundingBox();
+  expect(sidebarBox).not.toBeNull();
+  expect(sidebarBox!.width).toBeGreaterThanOrEqual((await page.evaluate(() => innerWidth)) - 1);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("settings-toggle")).toBeHidden();
 

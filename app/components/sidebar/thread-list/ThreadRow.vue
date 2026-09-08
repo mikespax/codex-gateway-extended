@@ -15,6 +15,9 @@ import SidebarRowLabel from "../SidebarRowLabel.vue";
 import ThreadStatusIndicator from "./ThreadStatusIndicator.vue";
 import type { SidebarThreadRow } from "../sidebar-types";
 import { formatThreadSize, threadStorageTone, threadStorageToneClass } from "./thread-size";
+import SidebarThreadOverview from "./SidebarThreadOverview.vue";
+import type { SidebarThreadOverview as SidebarThreadOverviewData } from "@/utils/thread-sidebar-summary";
+import SidebarResourceUsage from "../SidebarResourceUsage.vue";
 
 const props = defineProps<{
   thread: SidebarThreadRow;
@@ -25,6 +28,7 @@ const props = defineProps<{
   subtitle?: string;
   resourceUsage?: string | null;
   threadBytes?: number | null;
+  activityOverview?: SidebarThreadOverviewData | null;
   pinLabel: string;
   moveLabel?: string;
   moveHostLabel?: string;
@@ -45,6 +49,7 @@ const formattedThreadSize = computed(() => formatThreadSize(props.threadBytes));
 const threadSizeClass = computed(
   () => threadStorageToneClass[threadStorageTone(props.threadBytes)],
 );
+const displayActivityOverview = computed(() => props.activityOverview ?? null);
 const hasSubtitle = computed(
   () =>
     (props.subtitle !== undefined && props.subtitle !== null && props.subtitle !== "") ||
@@ -79,6 +84,9 @@ const hasSubtitle = computed(
               class="size-3.5 shrink-0 fill-current text-accent-orange"
             />
           </template>
+          <template v-if="displayActivityOverview" #middle>
+            <SidebarThreadOverview :overview="displayActivityOverview" />
+          </template>
           <template v-if="hasSubtitle" #subtitle>
             <span v-if="props.subtitle">{{ props.subtitle }}</span>
             <span v-if="props.subtitle && props.threadBytes !== undefined"> · </span>
@@ -90,7 +98,11 @@ const hasSubtitle = computed(
               <span :class="threadSizeClass">{{ formattedThreadSize }}</span>
             </span>
             <span v-if="props.threadBytes !== undefined && props.resourceUsage"> · </span>
-            <span v-if="props.resourceUsage">{{ props.resourceUsage }}</span>
+            <SidebarResourceUsage
+              v-if="props.resourceUsage"
+              :value="props.resourceUsage"
+              test-id="thread-resource-usage"
+            />
           </template>
           <template #trailing>
             <ThreadStatusIndicator :status="status" :completion-attention="completionAttention" />

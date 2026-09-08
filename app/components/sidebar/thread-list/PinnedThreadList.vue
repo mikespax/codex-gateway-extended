@@ -5,6 +5,7 @@ import type { HostRecord, PinnedThreadRecord } from "../sidebar-types";
 import type { ThreadRuntimeStatus } from "@/stores/gateway/types";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { pinnedKey } from "@/stores/gateway/thread-utils/identity";
+import { sidebarOverviewForThread } from "@/utils/thread-sidebar-summary";
 
 const props = defineProps<{
   threads: PinnedThreadRecord[];
@@ -46,6 +47,19 @@ function isSelectedPinnedThread(thread: PinnedThreadRecord) {
 function threadBytes(thread: PinnedThreadRecord) {
   return activity.summariesByKey[pinnedKey(thread.hostId, String(thread.threadId))]?.threadBytes;
 }
+
+function activityOverview(thread: PinnedThreadRecord) {
+  const summary = activity.summariesByKey[pinnedKey(thread.hostId, String(thread.threadId))];
+  return summary === undefined
+    ? null
+    : sidebarOverviewForThread({
+        goalObjective: summary.goalObjective,
+        goalStatus: summary.goalStatus,
+        currentOperation: summary.currentOperation,
+        turnSummary: summary.turnSummary,
+        lastUserInput: summary.lastUserInput,
+      });
+}
 </script>
 
 <template>
@@ -68,6 +82,7 @@ function threadBytes(thread: PinnedThreadRecord) {
         :completion-attention="completionAttention(thread)"
         :subtitle="subtitleForPinnedThread(thread) || formatRelative(thread.updatedAt)"
         :thread-bytes="threadBytes(thread)"
+        :activity-overview="activityOverview(thread)"
         :resource-usage="props.resourceUsageForHost?.(thread.hostId)"
         :pin-label="$t('app.unpinThread')"
         :move-label="props.moveLabel"

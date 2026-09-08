@@ -4,6 +4,7 @@ import {
   expectThreadGoalUpdated,
 } from "@/stores/gateway-realtime/response-parsers";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
+import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
 import { gatewayDomainEvents } from "@/stores/gateway/domain-events";
@@ -29,6 +30,7 @@ export function createThreadGoalActions() {
       ...composer.threadGoalObservedAtByKey,
       [key]: Date.now(),
     };
+    useGatewayThreadActivityStore().updateThreadGoal(hostId, threadId, goal);
   }
 
   function clearThreadGoalState(hostId: number, threadId: string) {
@@ -40,6 +42,7 @@ export function createThreadGoalActions() {
       ...composer.threadGoalObservedAtByKey,
       [key]: Date.now(),
     };
+    useGatewayThreadActivityStore().updateThreadGoal(hostId, threadId, null);
   }
 
   return {
@@ -115,8 +118,11 @@ export function createThreadGoalActions() {
         expectThreadGoalSnapshot,
       );
       if (!sessionIsCurrent()) return;
-      if (message.goal !== null) upsertThreadGoal(hostId, threadId, message.goal);
-      else clearThreadGoalState(hostId, threadId);
+      if (message.goal !== null) {
+        upsertThreadGoal(hostId, threadId, message.goal);
+      } else {
+        clearThreadGoalState(hostId, threadId);
+      }
     },
   };
 }

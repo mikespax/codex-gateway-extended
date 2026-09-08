@@ -32,8 +32,11 @@ export function registerRealtimeResourceSubscribers() {
   });
   gatewayDomainEvents.on("realtime-thread-goal-snapshot", (message) => {
     const composer = useGatewayComposerStore();
-    if (message.goal) composer.upsertThreadGoal(message.hostId, message.threadId, message.goal);
-    else composer.clearThreadGoalState(message.hostId, message.threadId);
+    if (message.goal) {
+      composer.upsertThreadGoal(message.hostId, message.threadId, message.goal);
+    } else {
+      composer.clearThreadGoalState(message.hostId, message.threadId);
+    }
   });
   gatewayDomainEvents.on("realtime-terminal-opened", ({ session }) => {
     useGatewayTerminalStore().upsertTerminalSession(session);

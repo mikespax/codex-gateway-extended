@@ -4,11 +4,18 @@ import type {
   AppServerThread,
   GatewayThread,
   ProjectRecord,
+  ThreadGoalStatus,
   ThreadRuntimeStatus,
 } from "~~/shared/types";
 import { pinnedKey } from "../gateway/thread-utils/identity";
 import { firstNonEmptyString, trimmedOrNull } from "~~/shared/utils/strings";
 import { isAppServerSubAgentThread } from "~~/shared/runtime/app-server";
+import {
+  currentOperationFromThread,
+  lastCompletedTurnSummaryFromThread,
+  lastUserInputFromThread,
+  threadGoalSummaryFromThread,
+} from "@/utils/thread-sidebar-summary";
 
 export interface ThreadActivitySummary {
   hostId: number;
@@ -30,6 +37,15 @@ export interface ThreadActivitySummary {
   /** Display-only ordering marker updated only when a running turn becomes terminal. */
   completionAt?: number;
   threadBytes?: number | null;
+  /** The latest non-terminal goal observed for this thread, if one is available. */
+  goalObjective?: string | null;
+  goalStatus?: ThreadGoalStatus | null;
+  /** Short action label for a currently running turn. */
+  currentOperation?: string | null;
+  /** Brief summary of the most recently completed agent turn. */
+  turnSummary?: string | null;
+  /** Brief summary of the latest user message. */
+  lastUserInput?: string | null;
 }
 
 export interface ThreadActivityMetadata {
@@ -80,6 +96,52 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     projects: ProjectRecord[],
   ) {
     upsertSummary(summaryFromAppServerThread(hostId, thread, projects));
+  }
+
+  function updateThreadGoal(
+    hostId: number,
+    threadId: string,
+    goal: { objective: string; status: ThreadGoalStatus } | null,
+  ) {
+    const key = pinnedKey(hostId, threadId);
+    const existing = summariesByKey.value[key];
+    if (existing === undefined) return;
+    upsertSummary({
+      ...existing,
+      hostId,
+      threadId,
+      goalObjective: goal?.objective ?? null,
+      goalStatus: goal?.status ?? null,
+    });
+  }
+
+  function updateCurrentOperation(hostId: number, threadId: string, operation: string | null) {
+    const key = pinnedKey(hostId, threadId);
+    const existing = summariesByKey.value[key];
+    if (existing === undefined) return;
+    upsertSummary({ ...existing, hostId, threadId, currentOperation: operation });
+  }
+
+  function updateTurnSummary(hostId: number, threadId: string, summary: string | null) {
+    const key = pinnedKey(hostId, threadId);
+    const existing = summariesByKey.value[key];
+    if (existing === undefined) return;
+    upsertSummary({ ...existing, hostId, threadId, turnSummary: summary });
+  }
+
+  function updateLastUserInput(hostId: number, threadId: string, input: string | null) {
+    const key = pinnedKey(hostId, threadId);
+    const existing = summariesByKey.value[key];
+    if (existing === undefined) return;
+    upsertSummary({ ...existing, hostId, threadId, lastUserInput: input });
+  }
+
+  function markTurnRunning(hostId: number, threadId: string) {
+    const key = pinnedKey(hostId, threadId);
+    const existing = summariesByKey.value[key];
+    if (existing === undefined) return;
+    if (existing.currentOperation !== null && existing.currentOperation !== undefined) return;
+    updateCurrentOperation(hostId, threadId, "Working");
   }
 
   function ingestMetadata(
@@ -184,6 +246,11 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     recordRuntimeStatus,
     markTurnCompleted,
     updateTitle,
+    updateThreadGoal,
+    updateCurrentOperation,
+    updateTurnSummary,
+    updateLastUserInput,
+    markTurnRunning,
     resetState,
   };
 });
@@ -195,10 +262,22 @@ function summaryFromGatewayThread(
   const project = projects.find(
     (candidate) => candidate.id === thread.projectId && candidate.hostId === thread.hostId,
   );
-  return {
+  const summary: ThreadActivitySummary = {
     ...summaryFromThread(thread.hostId, thread, project, project?.id ?? null, thread.title),
     threadBytes: thread.threadBytes ?? null,
   };
+  const goal = threadGoalSummaryFromThread(thread);
+  if (goal !== undefined) {
+    summary.goalObjective = goal?.objective ?? null;
+    summary.goalStatus = goal?.status ?? null;
+  }
+  const operation = currentOperationFromThread(thread);
+  if (operation !== undefined) summary.currentOperation = operation;
+  const turnSummary = lastCompletedTurnSummaryFromThread(thread);
+  if (turnSummary !== undefined) summary.turnSummary = turnSummary;
+  const lastUserInput = lastUserInputFromThread(thread);
+  if (lastUserInput !== undefined) summary.lastUserInput = lastUserInput;
+  return summary;
 }
 
 function summaryFromAppServerThread(
@@ -209,7 +288,19 @@ function summaryFromAppServerThread(
   const project = projects.find(
     (candidate) => candidate.hostId === hostId && candidate.remotePath === thread.cwd,
   );
-  return summaryFromThread(hostId, thread, project, project?.id ?? null, null);
+  const summary = summaryFromThread(hostId, thread, project, project?.id ?? null, null);
+  const goal = threadGoalSummaryFromThread(thread);
+  if (goal !== undefined) {
+    summary.goalObjective = goal?.objective ?? null;
+    summary.goalStatus = goal?.status ?? null;
+  }
+  const operation = currentOperationFromThread(thread);
+  if (operation !== undefined) summary.currentOperation = operation;
+  const turnSummary = lastCompletedTurnSummaryFromThread(thread);
+  if (turnSummary !== undefined) summary.turnSummary = turnSummary;
+  const lastUserInput = lastUserInputFromThread(thread);
+  if (lastUserInput !== undefined) summary.lastUserInput = lastUserInput;
+  return summary;
 }
 
 function summaryFromThread(
