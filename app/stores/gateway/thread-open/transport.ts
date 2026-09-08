@@ -1,5 +1,5 @@
 import type { ComposerTurnOptions } from "~~/shared/types";
-import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
+import { INITIAL_TURN_PAGE_LIMIT, MAX_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { projectById } from "@/stores/gateway-catalog/selectors";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
@@ -25,6 +25,10 @@ export function requestActivateThreadSnapshot(input: {
   threadId: string;
   limit?: number;
 }) {
+  const requestedLimit = Number.isFinite(input.limit)
+    ? Math.trunc(input.limit ?? INITIAL_TURN_PAGE_LIMIT)
+    : INITIAL_TURN_PAGE_LIMIT;
+  const limit = Math.min(MAX_TURN_PAGE_LIMIT, Math.max(INITIAL_TURN_PAGE_LIMIT, requestedLimit));
   return useGatewayRealtimeStore().request(
     (requestId) => ({
       type: "thread.activate",
@@ -33,7 +37,7 @@ export function requestActivateThreadSnapshot(input: {
       projectId: input.projectId,
       cwd: projectById(useGatewayCatalogStore().projects, input.projectId)?.remotePath,
       threadId: input.threadId,
-      limit: input.limit ?? INITIAL_TURN_PAGE_LIMIT,
+      limit,
     }),
     expectThreadSnapshot,
     // Legacy app-server rollouts can take longer than 30 seconds to replay even when the first

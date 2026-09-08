@@ -31,11 +31,15 @@ import {
 } from "~~/shared/runtime/app-server";
 import { gatewayThreadFromAppServer } from "../protocol/gateway-thread";
 
+const THREAD_CACHE_VALIDATION_COOLDOWN_MS = 30_000;
+
 export class ThreadOpenService {
   private readonly pendingRefreshes = new Map<
     string,
     { limit: number; promise: Promise<ReturnTypeResult> }
   >();
+  private readonly pendingCacheValidations = new Map<string, Promise<boolean>>();
+  private readonly lastCacheValidationAt = new Map<string, number>();
 
   constructor(private readonly registry: ControllerRegistry) {}
 
@@ -59,14 +63,41 @@ export class ThreadOpenService {
             snapshotEventCursor,
           )
         : null;
-    const cachedSnapshot = memorySnapshot ?? persistentCandidate?.snapshot ?? null;
+    let cachedSnapshot = memorySnapshot ?? persistentCandidate?.snapshot ?? null;
     const fallbackRuntimeStatus = persistentCandidate?.authoritativeStatus ?? null;
     const cachedSnapshotEventCursor =
       persistentCandidate?.verified === true
         ? persistentCandidate.lastEventId
         : snapshotEventCursor;
+    if (persistentCandidate?.verified === true) {
+      this.noteCacheValidation(host.id, threadId);
+    }
     if (cachedSnapshot) {
+      let cacheChanged = false;
       if (
+        memorySnapshot !== null &&
+        persistentCandidate?.verified !== false &&
+        this.shouldValidateCachedThread(host.id, threadId)
+      ) {
+        try {
+          cacheChanged = await this.validateCachedThread(host, threadId, cachedSnapshot);
+          if (cacheChanged) {
+            // The metadata check updates the stored snapshot before the history refresh. Use that
+            // newer thread identity as the fallback if the subsequent page read is unavailable.
+            cachedSnapshot = threadSnapshotStore.get(host.id, threadId) ?? cachedSnapshot;
+          }
+        } catch (error) {
+          // Freshness is advisory. Keep the fast cached view available during a transient RPC
+          // failure; the next activation after the cooldown will retry the check.
+          runtimeLog("thread cache validation failed", {
+            hostId: host.id,
+            threadId,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      if (
+        !cacheChanged &&
         persistentCandidate?.verified !== false &&
         snapshotSatisfiesTurnLimit(cachedSnapshot, limit)
       ) {
@@ -104,7 +135,7 @@ export class ThreadOpenService {
     }
 
     try {
-      return await this.refreshThreadState(
+      const result = await this.refreshThreadState(
         host,
         threadId,
         projectId,
@@ -113,6 +144,8 @@ export class ThreadOpenService {
         projectCwd,
         snapshotEventCursor,
       );
+      this.noteCacheValidation(host.id, threadId);
+      return result;
     } catch (error) {
       // A transport/RPC failure must not turn a materialized conversation into an empty view.
       // Keep the last durable snapshot as a visible, reconnectable fallback; the next activation
@@ -137,6 +170,50 @@ export class ThreadOpenService {
         );
       }
       throw error;
+    }
+  }
+
+  private shouldValidateCachedThread(hostId: number, threadId: string) {
+    const key = refreshKey(hostId, threadId);
+    const lastValidatedAt = this.lastCacheValidationAt.get(key);
+    return (
+      lastValidatedAt === undefined ||
+      Date.now() - lastValidatedAt >= THREAD_CACHE_VALIDATION_COOLDOWN_MS
+    );
+  }
+
+  private noteCacheValidation(hostId: number, threadId: string) {
+    this.lastCacheValidationAt.set(refreshKey(hostId, threadId), Date.now());
+  }
+
+  private async validateCachedThread(
+    host: HostRecord,
+    threadId: string,
+    cachedSnapshot: ThreadOpenSnapshot,
+  ) {
+    const key = refreshKey(host.id, threadId);
+    const pending = this.pendingCacheValidations.get(key);
+    if (pending !== undefined) return pending;
+
+    this.noteCacheValidation(host.id, threadId);
+    const promise = this.refreshThreadRuntimeStatus(host, threadId).then((result) => {
+      const changed = result.thread.updatedAt !== cachedSnapshot.thread.updatedAt;
+      runtimeLog("thread cache validated", {
+        hostId: host.id,
+        threadId,
+        changed,
+        cachedUpdatedAt: cachedSnapshot.thread.updatedAt,
+        authoritativeUpdatedAt: result.thread.updatedAt,
+      });
+      return changed;
+    });
+    this.pendingCacheValidations.set(key, promise);
+    try {
+      return await promise;
+    } finally {
+      if (this.pendingCacheValidations.get(key) === promise) {
+        this.pendingCacheValidations.delete(key);
+      }
     }
   }
 
