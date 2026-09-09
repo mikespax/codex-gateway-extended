@@ -6,7 +6,7 @@ export class RealtimeRequestError extends Error {
   constructor(
     message: string,
     readonly request: RealtimeRequestMessage | undefined,
-    readonly reason: "timeout" | "unavailable" | "disconnected" | "cancelled" | "server",
+    readonly reason: "timeout" | "unavailable" | "disconnected" | "server",
     readonly details: Record<string, unknown> = {},
   ) {
     super(formatRealtimeRequestError(message, request, details));

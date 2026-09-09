@@ -18,6 +18,10 @@ export const settingsPanelRegistry = {
     component: "SettingsDockHostPanel",
     titleKey: "app.hosts",
   },
+  models: {
+    component: "SettingsDockModelPanel",
+    titleKey: "app.modelVisibilitySettings",
+  },
   notifications: {
     component: "SettingsDockNotificationPanel",
     titleKey: "app.notificationSettings",
@@ -28,5 +32,6 @@ export const settingsPanelKinds = [
   "appearance",
   "config",
   "hosts",
+  "models",
   "notifications",
 ] as const satisfies readonly SettingsPanelKind[];

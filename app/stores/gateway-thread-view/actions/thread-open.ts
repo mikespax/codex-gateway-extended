@@ -36,14 +36,12 @@ import { captureSessionEpoch } from "@/utils/session-epoch";
 const previewLoadTokens = new Map<string, symbol>();
 interface PendingMainThreadOpen {
   viewEpoch: number;
-  startedAt: number;
-  controller: AbortController;
+  activationSent: boolean;
+  retryCount: number;
   promise?: Promise<void>;
 }
 
 const pendingMainThreadOpens = new Map<string, PendingMainThreadOpen>();
-const MAIN_THREAD_OPEN_DEDUP_WINDOW_MS = 1_000;
-const MAIN_THREAD_OPEN_TIMEOUT_MS = 30_000;
 const AUTHORITATIVE_VIEW_MAX_AGE_MS = 5 * 60_000;
 interface EventGapRecovery {
   promise: Promise<void>;
@@ -107,25 +105,20 @@ export function createThreadOpenActions() {
         navigation.selectedThreadId === threadId &&
         isCurrentViewTransition(pendingOpen.viewEpoch)
       ) {
-        // Repeated clicks on the selected thread must not enqueue another activation while the
-        // first one is still resolving. Overlapping activations race their view epochs and can
-        // leave the pane waiting for an authoritative snapshot that an older response no longer
-        // owns.
-        if (Date.now() - pendingOpen.startedAt < MAIN_THREAD_OPEN_DEDUP_WINDOW_MS) {
+        // Repeated clicks must not enqueue an activation before the first request leaves the
+        // browser. Once a request is visibly stalled, allow one explicit retry; later clicks
+        // join that retry instead of creating an activation storm.
+        if (!pendingOpen.activationSent || pendingOpen.retryCount > 0) {
           return pendingOpen.promise;
         }
       }
-      pendingOpen?.controller.abort();
-      if (pendingMainThreadOpens.get(openKey) === pendingOpen)
-        pendingMainThreadOpens.delete(openKey);
       const viewEpoch = beginViewTransition();
       const currentOpen: PendingMainThreadOpen = {
         viewEpoch,
-        startedAt: Date.now(),
-        controller: new AbortController(),
+        activationSent: false,
+        retryCount: pendingOpen?.activationSent ? (pendingOpen.retryCount ?? 0) + 1 : 0,
       };
       pendingMainThreadOpens.set(openKey, currentOpen);
-      cancelObsoletePendingMainThreadOpens(viewEpoch);
       let backgroundSync = false;
       if (gateway.modelsHostId !== targetHostId) {
         gateway.models = [];
@@ -139,6 +132,7 @@ export function createThreadOpenActions() {
           finishThreadSelection(threadId, context?.replaceRoute);
           void refreshGoalAfterOpen(targetHostId, threadId);
           requestScrollToLatest();
+          currentOpen.activationSent = true;
           const syncPromise = syncOpenThreadFromServer({
             hostId: targetHostId,
             projectId: targetProjectId,
@@ -148,8 +142,6 @@ export function createThreadOpenActions() {
             showLoading: false,
             scrollToLatest: false,
             limit: cachedTurnLimit,
-            signal: currentOpen.controller.signal,
-            timeoutMs: MAIN_THREAD_OPEN_TIMEOUT_MS,
           });
           currentOpen.promise = syncPromise;
           backgroundSync = true;
@@ -173,6 +165,7 @@ export function createThreadOpenActions() {
           rememberOpenThread(threadId);
           syncSelectedRoute({ replace: context?.replaceRoute });
           requestScrollToLatest();
+          currentOpen.activationSent = true;
           const syncPromise = syncOpenThreadFromServer({
             hostId: targetHostId,
             projectId: persistentView.projectId ?? targetProjectId,
@@ -182,14 +175,13 @@ export function createThreadOpenActions() {
             showLoading: false,
             scrollToLatest: false,
             limit: cachedTurnLimit,
-            signal: currentOpen.controller.signal,
-            timeoutMs: MAIN_THREAD_OPEN_TIMEOUT_MS,
           });
           currentOpen.promise = syncPromise;
           backgroundSync = true;
           void syncPromise.then(clearPendingMainThreadOpen, clearPendingMainThreadOpen);
           return;
         }
+        currentOpen.activationSent = true;
         const syncPromise = syncOpenThreadFromServer({
           hostId: targetHostId,
           projectId: targetProjectId,
@@ -197,8 +189,6 @@ export function createThreadOpenActions() {
           viewEpoch,
           replaceRoute: context?.replaceRoute,
           showLoading: true,
-          signal: currentOpen.controller.signal,
-          timeoutMs: MAIN_THREAD_OPEN_TIMEOUT_MS,
         });
         currentOpen.promise = syncPromise;
         await syncPromise;
@@ -550,8 +540,6 @@ async function syncOpenThreadFromServer(input: {
   showLoading: boolean;
   scrollToLatest?: boolean;
   limit?: number;
-  signal?: AbortSignal;
-  timeoutMs?: number;
 }) {
   const gateway = useGatewayBootstrapStore();
   const views = useGatewayThreadViewStore();
@@ -577,12 +565,7 @@ async function syncOpenThreadFromServer(input: {
     void refreshGoalAfterOpen(input.hostId, input.threadId);
     if (input.scrollToLatest ?? true) requestScrollToLatest();
   } catch (error: unknown) {
-    if (
-      !sessionIsCurrent() ||
-      input.signal?.aborted === true ||
-      !isCurrentViewTransition(input.viewEpoch)
-    )
-      return;
+    if (!sessionIsCurrent() || !isCurrentViewTransition(input.viewEpoch)) return;
     gateway.setError(
       messageFromError(error, gateway.t("app.openThreadFailed"), gateway.errorLabels),
       { hostId: input.hostId, projectId: input.projectId, threadId: input.threadId },
@@ -591,14 +574,6 @@ async function syncOpenThreadFromServer(input: {
     if (input.showLoading && sessionIsCurrent() && isCurrentViewTransition(input.viewEpoch)) {
       views.loading = false;
     }
-  }
-}
-
-function cancelObsoletePendingMainThreadOpens(currentViewEpoch: number) {
-  for (const [key, pending] of pendingMainThreadOpens) {
-    if (pending.viewEpoch === currentViewEpoch) continue;
-    pending.controller.abort();
-    pendingMainThreadOpens.delete(key);
   }
 }
 

@@ -24,7 +24,7 @@ export function useComposerController() {
   const runtime = useGatewayThreadRuntimeStore();
   const threadView = useGatewayThreadViewStore();
   const { t } = useI18n();
-  const { models, loadingModels } = storeToRefs(gateway);
+  const { visibleModels, loadingModels } = storeToRefs(gateway);
   const { selectedHostId, selectedProjectId, selectedThreadId } = storeToRefs(navigation);
   const {
     selectedThreadGoal: selectedThreadGoalSnapshot,
@@ -223,7 +223,7 @@ export function useComposerController() {
     handlePrimaryAction,
     interruptTurn: submit.interruptTurn,
     handleFileReferenceLimit,
-    models,
+    models: visibleModels,
     loadingModels,
     ...settings,
   };

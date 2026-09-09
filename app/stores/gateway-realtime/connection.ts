@@ -5,6 +5,9 @@ import { createUuid } from "@/lib/uuid";
 import { parseRealtimeServerMessage } from "~~/shared/runtime/realtime";
 
 const RESUME_PING_TIMEOUT_MS = 4_000;
+const HEALTHY_CONNECTION_CACHE_MS = 5_000;
+const VISIBLE_HEALTH_INTERVAL_MS = 15_000;
+const REALTIME_READY_TIMEOUT_MS = 15_000;
 
 interface RealtimeConnectionOptions {
   disconnectedMessage: () => string;
@@ -32,6 +35,13 @@ export interface RealtimeConnectionState {
 
 export function createRealtimeConnection(options: RealtimeConnectionOptions) {
   const readyWaiters = new Set<ReadyWaiter>();
+  let healthProbe: {
+    nonce: string;
+    promise: Promise<void>;
+    resolve: () => void;
+    reject: (error: Error) => void;
+  } | null = null;
+  let lastHealthyAt = 0;
   const state = reactive<RealtimeConnectionState>({
     socket: null,
     connected: false,
@@ -91,7 +101,12 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
       clearHealthTimer();
       state.connected = false;
       state.socket = null;
-      options.onDisconnected(new Error(options.disconnectedMessage()));
+      lastHealthyAt = 0;
+      const healthError = new Error(options.disconnectedMessage());
+      const pendingHealthProbe = healthProbe;
+      healthProbe = null;
+      pendingHealthProbe?.reject(healthError);
+      options.onDisconnected(healthError);
       scheduleReconnect();
     });
 
@@ -103,6 +118,8 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
 
     clearReconnectTimer();
     clearHealthTimer();
+    rejectHealthProbe(new Error(options.disconnectedMessage()));
+    lastHealthyAt = 0;
     closeCurrentSocket();
     options.onDisconnected(new Error(options.disconnectedMessage()));
     connect();
@@ -116,6 +133,8 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
     closeCurrentSocket();
     state.reconnectAttempt = 0;
     state.readyCount = 0;
+    lastHealthyAt = 0;
+    rejectHealthProbe(new Error(options.disconnectedMessage()));
     rejectReadyWaiters(new Error(options.disconnectedMessage()));
     options.onDisconnected(new Error(options.disconnectedMessage()));
   }
@@ -163,29 +182,79 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
     useEventListener(document, "visibilitychange", () => {
       if (document.visibilityState === "visible") checkConnection();
     });
+    window.setInterval(() => {
+      if (document.visibilityState === "visible") checkConnection();
+    }, VISIBLE_HEALTH_INTERVAL_MS);
   }
 
   function checkConnection() {
+    void ensureHealthy().catch(() => {
+      // The request path reports its own failure. A background heartbeat only repairs the
+      // connection and must not create an unhandled rejection.
+    });
+  }
+
+  async function ensureHealthy() {
     if (!import.meta.client || !useAuthStore().isAuthenticated) return;
 
     const socket = state.socket;
     if (socket === null || socket.readyState !== WebSocket.OPEN || !state.connected) {
-      reconnectNow();
+      if (socket !== null || state.connected) reconnectNow();
+      else connect();
+      await waitForReady(REALTIME_READY_TIMEOUT_MS);
+      return;
+    }
+
+    if (lastHealthyAt + HEALTHY_CONNECTION_CACHE_MS > Date.now()) return;
+    if (healthProbe !== null) {
+      await healthProbe.promise;
       return;
     }
 
     const nonce = createUuid();
+    let resolveProbe!: () => void;
+    let rejectProbe!: (error: Error) => void;
+    const promise = new Promise<void>((resolve, reject) => {
+      resolveProbe = resolve;
+      rejectProbe = reject;
+    });
+    const currentProbe = {
+      nonce,
+      promise,
+      resolve: resolveProbe,
+      reject: rejectProbe,
+    };
+    healthProbe = currentProbe;
     clearHealthTimer();
     state.healthNonce = nonce;
     state.healthTimer = window.setTimeout(() => {
-      if (state.healthNonce === nonce) reconnectNow();
+      if (healthProbe !== currentProbe) return;
+      healthProbe = null;
+      clearHealthTimer();
+      lastHealthyAt = 0;
+      // Do not send the application request until the replacement socket has completed auth.
+      reconnectNow();
+      void waitForReady(REALTIME_READY_TIMEOUT_MS).then(resolveProbe, rejectProbe);
     }, RESUME_PING_TIMEOUT_MS);
-    send({ type: "ping", nonce });
+    try {
+      socket.send(JSON.stringify({ type: "ping", nonce }));
+    } catch {
+      if (healthProbe === currentProbe) healthProbe = null;
+      clearHealthTimer();
+      lastHealthyAt = 0;
+      reconnectNow();
+      void waitForReady(REALTIME_READY_TIMEOUT_MS).then(resolveProbe, rejectProbe);
+    }
+    await promise;
   }
 
   function acknowledgePong(nonce?: string) {
     if (nonce !== undefined && nonce !== state.healthNonce) return;
+    lastHealthyAt = Date.now();
     clearHealthTimer();
+    const pendingHealthProbe = healthProbe;
+    healthProbe = null;
+    pendingHealthProbe?.resolve();
   }
 
   function markReady() {
@@ -241,6 +310,12 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
     state.healthNonce = null;
   }
 
+  function rejectHealthProbe(error: Error) {
+    const pendingHealthProbe = healthProbe;
+    healthProbe = null;
+    pendingHealthProbe?.reject(error);
+  }
+
   return {
     state,
     connect,
@@ -250,6 +325,7 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions) {
     send,
     installHealthCheck,
     checkConnection,
+    ensureHealthy,
     acknowledgePong,
     markReady,
     waitForReady,

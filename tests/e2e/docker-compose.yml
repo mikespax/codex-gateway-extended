@@ -45,8 +45,8 @@ services:
 
   build-runner:
     image: codex-gateway-e2e-runner
-    # The production bundle exceeds the old 2 GiB ceiling during Nitro/Rolldown linking. Keep a
-    # 4 GiB default, with E2E_BUILD_MEMORY_LIMIT still available for constrained hosts.
+    # Keep CI and constrained hosts bounded by default. Local runs can opt into a larger, still
+    # explicit cgroup using E2E_BUILD_MEMORY_LIMIT (the Mac wrapper uses 8g).
     mem_limit: ${E2E_BUILD_MEMORY_LIMIT:-4g}
     build:
       context: ../..
