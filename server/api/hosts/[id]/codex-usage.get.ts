@@ -10,6 +10,7 @@ import { threadBroker } from "../../../utils/gateway/runtime/broker";
 import { CodexRateLimitReadCache } from "../../../utils/gateway/runtime/rate-limit-read-cache";
 import { hostStore } from "../../../utils/gateway/state/hosts";
 import { currentGatewayUserId } from "../../../utils/gateway/state/memory";
+import { turnUsageRepository } from "../../../utils/gateway/usage/turn-usage-repository";
 
 const rateLimitReadCache = new CodexRateLimitReadCache();
 
@@ -29,5 +30,11 @@ export default defineGatewayEventHandler(async (event) => {
   // across a logout/login transition.
   setResponseHeader(event, "cache-control", "private, no-cache");
   setResponseHeader(event, "x-gateway-codex-usage-cache", result.cacheState);
-  return result.value;
+  const userId = currentGatewayUserId();
+  const summary = result.value;
+  if (userId !== null) turnUsageRepository.recordQuotaObservation(userId, summary);
+  return {
+    ...summary,
+    thisMonth: userId === null ? undefined : turnUsageRepository.monthSummary(userId),
+  };
 });

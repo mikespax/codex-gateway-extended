@@ -2,6 +2,11 @@
 // Native thread migration requires the app-server resume/list behavior shipped in 0.152.
 // Pin to the version verified on the Lenovo target until a newer release is exercised here.
 export const SUPPORTED_CODEX_VERSION = "0.152.1";
+// Generated from the experimental protocol schema of the version currently installed on the
+// managed hosts. Keep this alongside the version gate so accounting records describe the exact
+// app-server contract that produced them.
+export const SUPPORTED_APP_SERVER_SCHEMA_HASH =
+  "f9e3ca7e56300b4e5a5686419940ef77bbdc42846760d6a9cd53a21f20dc9ebd";
 
 export interface ParsedCodexVersion {
   raw: string;

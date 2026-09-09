@@ -13,6 +13,7 @@ const summary: CodexRateLimitSummary = {
   planType: "team",
   primary: null,
   secondary: null,
+  windows: [],
   observedAt: 1,
 };
 

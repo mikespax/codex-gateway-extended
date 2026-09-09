@@ -9,6 +9,7 @@ import type { ThreadOpenService } from "./thread-open-service";
 import { recordFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
 import { trimmedOrFallback } from "~~/shared/utils/strings";
 import { parseTurnStartResponse, parseTurnSteerResponse } from "~~/shared/runtime/app-server";
+import { turnUsageAccounting } from "../usage/turn-usage-accounting";
 
 export class ThreadTurnCommandService {
   constructor(
@@ -30,6 +31,15 @@ export class ThreadTurnCommandService {
           parseTurnStartResponse,
         ),
       );
+      const startedTurn = recordFromUnknown(result)?.turn;
+      const turnId = stringFromUnknown(recordFromUnknown(startedTurn)?.id);
+      if (turnId !== null) {
+        turnUsageAccounting.registerTurnMetadata(host.id, threadId, turnId, {
+          model: input.model ?? null,
+          effort: input.effort ?? null,
+          serviceTier: input.serviceTier ?? null,
+        });
+      }
       controller.markActiveMainThread();
       return result;
     });
@@ -56,6 +66,14 @@ export class ThreadTurnCommandService {
             parseTurnSteerResponse,
           ),
         );
+        const turnId = stringFromUnknown(recordFromUnknown(result)?.turnId);
+        if (turnId !== null) {
+          turnUsageAccounting.registerTurnMetadata(host.id, threadId, turnId, {
+            model: null,
+            effort: null,
+            serviceTier: null,
+          });
+        }
         controller.markActiveMainThread();
         return result;
       })

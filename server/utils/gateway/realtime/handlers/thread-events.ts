@@ -213,6 +213,13 @@ function subscribeThreadEvents(
       return;
     }
     if (event.id <= sentThroughId) return;
+    // Turn-usage projections are retained for the dashboard ledger, not part of the thread UI
+    // protocol. Skip legacy records as well as future records so reconnects cannot resurrect the
+    // removed end-of-turn footer.
+    if (event.method === "gateway/usage/turn") {
+      sentThroughId = event.id;
+      return;
+    }
     // Gateway event ids are monotonic within a user's in-memory event store. A high-water cursor
     // provides the same replay/live de-duplication as an ever-growing Set without retaining one
     // allocation for every token emitted during a long-running turn.

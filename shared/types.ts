@@ -38,7 +38,23 @@ export type {
   ReasoningEffort,
 } from "./types/thread";
 export type { ModelListResult, ModelRecord, ModelServiceTier } from "./types/models";
-export type { CodexRateLimitSummary, CodexRateLimitWindow } from "./types/account-usage";
+export type {
+  CodexRateLimitObservation,
+  CodexRateLimitSummary,
+  CodexRateLimitWindow,
+  CodexQuotaWindowDelta,
+  PricingCompleteness,
+  QuotaAttributionConfidence,
+  ThreadTurnUsageSummary,
+  UsageDashboardSummary,
+  UsageHistoricalImportSummary,
+  UsageHistoricalSource,
+  UsageMonthSummary,
+  UsagePeriodSummary,
+  UsageQuotaSnapshot,
+  UsageScope,
+  UsageSource,
+} from "./types/account-usage";
 export type { SidebarAiSummary, SidebarSummarySource } from "./types/sidebar-summaries";
 export {
   SIDEBAR_SUMMARY_BATCH_LIMIT,

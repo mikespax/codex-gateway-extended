@@ -17,6 +17,7 @@ const navigation = useGatewayNavigationStore();
 const threadView = useGatewayThreadViewStore();
 const realtime = useGatewayRealtimeStore();
 const auth = useAuthStore();
+const route = useRoute();
 const device = useDevice();
 const { initializing } = storeToRefs(bootstrap);
 const { selectedThreadId } = storeToRefs(navigation);
@@ -29,7 +30,11 @@ let compactViewportQuery: MediaQueryList | null = null;
 const layoutName = computed(() =>
   device.isMobileOrTablet || compactViewport.value ? "mobile" : "default",
 );
+const isUsagePage = computed(() => route.path === "/usage");
 const pageTitle = computed(() => {
+  if (isUsagePage.value) {
+    return "Codex usage - Codex Gateway";
+  }
   if (!selectedThreadId.value || !currentThread.value) {
     return "Codex Gateway";
   }
@@ -110,5 +115,6 @@ watch(
   >
   <Toaster rich-colors position="top-right" />
   <LoginScreen v-if="mounted && !isAuthenticated" />
+  <NuxtPage v-else-if="isUsagePage" />
   <NuxtLayout v-else :name="layoutName" />
 </template>

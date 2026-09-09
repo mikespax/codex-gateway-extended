@@ -52,5 +52,7 @@ const emit = defineEmits<{
     :started-at="props.row.startedAt"
     :latest-operation="props.row.latestOperation"
   />
-  <TurnDurationLabel v-else :timing="props.row" />
+  <div v-else class="flex items-center gap-3 py-1">
+    <TurnDurationLabel :timing="props.row" />
+  </div>
 </template>
