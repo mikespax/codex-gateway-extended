@@ -156,45 +156,6 @@ test("same-page thread switches retain the loaded history depth", async ({ page 
   ]);
 });
 
-test("repeated opens of one thread share the pending activation", async ({ page }) => {
-  await openApp(page);
-  const threadId = "e2e-repeated-open-dedup";
-  await installRealtimeThreadSnapshotMock(page, {
-    responseDelayMs: 500,
-    snapshots: {
-      [threadId]: {
-        thread: { id: threadId, name: "Repeated Open" },
-        history: {
-          thread: { id: threadId, turns: buildTextTurns(1, 1, "deduplicated open") },
-        },
-        projectId: 1,
-      },
-    },
-  });
-
-  const result = await page.evaluate(async (threadId) => {
-    const driver = window.__codexGatewayE2e;
-    if (!driver) throw new Error("Gateway E2E driver is unavailable");
-    driver.navigation.selectedThreadId = null;
-    driver.views.resetCurrentView();
-    await Promise.all(
-      Array.from({ length: 3 }, () =>
-        driver.views.openThread(threadId, { hostId: 1, projectId: 1 }),
-      ),
-    );
-    return {
-      selectedThreadId: driver.navigation.selectedThreadId,
-      authoritative: driver.views.authoritative,
-      history: JSON.stringify(driver.views.history),
-    };
-  }, threadId);
-
-  expect(result.selectedThreadId).toBe(threadId);
-  expect(result.authoritative).toBe(true);
-  expect(result.history).toContain("deduplicated open");
-  expect(await threadActivateRequests(page)).toHaveLength(1);
-});
-
 test("a cached thread stays hidden until the authoritative snapshot arrives", async ({ page }) => {
   await openApp(page);
   const threadId = "e2e-indexeddb-stale-while-revalidate";

@@ -34,12 +34,6 @@ import { clearThreadCompletionAttention } from "@/stores/gateway/thread-runtime/
 import { captureSessionEpoch } from "@/utils/session-epoch";
 
 const previewLoadTokens = new Map<string, symbol>();
-interface PendingMainThreadOpen {
-  viewEpoch: number;
-  promise?: Promise<void>;
-}
-
-const pendingMainThreadOpens = new Map<string, PendingMainThreadOpen>();
 const AUTHORITATIVE_VIEW_MAX_AGE_MS = 5 * 60_000;
 interface EventGapRecovery {
   promise: Promise<void>;
@@ -95,100 +89,67 @@ export function createThreadOpenActions() {
         requestScrollToLatest();
         return;
       }
-      const openKey = pinnedKey(targetHostId, threadId);
-      const pendingOpen = pendingMainThreadOpens.get(openKey);
-      if (
-        pendingOpen !== undefined &&
-        navigation.selectedHostId === targetHostId &&
-        navigation.selectedThreadId === threadId &&
-        isCurrentViewTransition(pendingOpen.viewEpoch)
-      ) {
-        // Repeated clicks on the selected thread must not enqueue another activation while the
-        // first one is still resolving. Overlapping activations race their view epochs and can
-        // leave the pane waiting for an authoritative snapshot that an older response no longer
-        // owns.
-        return pendingOpen.promise;
-      }
       const viewEpoch = beginViewTransition();
-      const currentOpen: PendingMainThreadOpen = { viewEpoch };
-      pendingMainThreadOpens.set(openKey, currentOpen);
-      let backgroundSync = false;
       if (gateway.modelsHostId !== targetHostId) {
         gateway.models = [];
         gateway.modelsHostId = null;
       }
-      try {
-        activatePendingThreadView(targetHostId, targetProjectId, threadId);
-        void gateway.ensureSelectedHostModels();
-        if (restoreThreadView(targetHostId, threadId)) {
-          const cachedTurnLimit = retainedTurnLimit(views.history);
-          finishThreadSelection(threadId, context?.replaceRoute);
-          void refreshGoalAfterOpen(targetHostId, threadId);
-          requestScrollToLatest();
-          const syncPromise = syncOpenThreadFromServer({
-            hostId: targetHostId,
-            projectId: targetProjectId,
-            threadId,
-            viewEpoch,
-            replaceRoute: context?.replaceRoute,
-            showLoading: false,
-            scrollToLatest: false,
-            limit: cachedTurnLimit,
-          });
-          currentOpen.promise = syncPromise;
-          backgroundSync = true;
-          void syncPromise.then(clearPendingMainThreadOpen, clearPendingMainThreadOpen);
-          return;
-        }
-        const sessionIsCurrent = captureSessionEpoch();
-        const persistentView = await readPersistentThreadView(targetHostId, threadId);
-        if (
-          persistentView !== null &&
-          sessionIsCurrent() &&
-          isCurrentViewTransition(viewEpoch) &&
-          navigation.selectedHostId === targetHostId &&
-          navigation.selectedThreadId === threadId
-        ) {
-          // Hydrate the old browser snapshot without extending its TTL. If the live activation is
-          // unavailable, the same stale record must not be refreshed indefinitely as if it were new.
-          upsertThreadView(persistentView, { persist: false });
-          restoreThreadView(targetHostId, threadId);
-          const cachedTurnLimit = retainedTurnLimit(persistentView.history);
-          rememberOpenThread(threadId);
-          syncSelectedRoute({ replace: context?.replaceRoute });
-          requestScrollToLatest();
-          const syncPromise = syncOpenThreadFromServer({
-            hostId: targetHostId,
-            projectId: persistentView.projectId ?? targetProjectId,
-            threadId,
-            viewEpoch,
-            replaceRoute: context?.replaceRoute,
-            showLoading: false,
-            scrollToLatest: false,
-            limit: cachedTurnLimit,
-          });
-          currentOpen.promise = syncPromise;
-          backgroundSync = true;
-          void syncPromise.then(clearPendingMainThreadOpen, clearPendingMainThreadOpen);
-          return;
-        }
-        await syncOpenThreadFromServer({
+      activatePendingThreadView(targetHostId, targetProjectId, threadId);
+      void gateway.ensureSelectedHostModels();
+      if (restoreThreadView(targetHostId, threadId)) {
+        const cachedTurnLimit = retainedTurnLimit(views.history);
+        finishThreadSelection(threadId, context?.replaceRoute);
+        void refreshGoalAfterOpen(targetHostId, threadId);
+        requestScrollToLatest();
+        void syncOpenThreadFromServer({
           hostId: targetHostId,
           projectId: targetProjectId,
           threadId,
           viewEpoch,
           replaceRoute: context?.replaceRoute,
-          showLoading: true,
+          showLoading: false,
+          scrollToLatest: false,
+          limit: cachedTurnLimit,
         });
-      } finally {
-        if (!backgroundSync) clearPendingMainThreadOpen();
+        return;
       }
-
-      function clearPendingMainThreadOpen() {
-        if (pendingMainThreadOpens.get(openKey) === currentOpen) {
-          pendingMainThreadOpens.delete(openKey);
-        }
+      const sessionIsCurrent = captureSessionEpoch();
+      const persistentView = await readPersistentThreadView(targetHostId, threadId);
+      if (
+        persistentView !== null &&
+        sessionIsCurrent() &&
+        isCurrentViewTransition(viewEpoch) &&
+        navigation.selectedHostId === targetHostId &&
+        navigation.selectedThreadId === threadId
+      ) {
+        // Hydrate the old browser snapshot without extending its TTL. If the live activation is
+        // unavailable, the same stale record must not be refreshed indefinitely as if it were new.
+        upsertThreadView(persistentView, { persist: false });
+        restoreThreadView(targetHostId, threadId);
+        const cachedTurnLimit = retainedTurnLimit(persistentView.history);
+        rememberOpenThread(threadId);
+        syncSelectedRoute({ replace: context?.replaceRoute });
+        requestScrollToLatest();
+        void syncOpenThreadFromServer({
+          hostId: targetHostId,
+          projectId: persistentView.projectId ?? targetProjectId,
+          threadId,
+          viewEpoch,
+          replaceRoute: context?.replaceRoute,
+          showLoading: false,
+          scrollToLatest: false,
+          limit: cachedTurnLimit,
+        });
+        return;
       }
+      await syncOpenThreadFromServer({
+        hostId: targetHostId,
+        projectId: targetProjectId,
+        threadId,
+        viewEpoch,
+        replaceRoute: context?.replaceRoute,
+        showLoading: true,
+      });
     },
 
     async openThreadPreview(
