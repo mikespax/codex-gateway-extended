@@ -45,9 +45,9 @@ services:
 
   build-runner:
     image: codex-gateway-e2e-runner
-    # The production bundle exceeds the old 2 GiB ceiling during Nitro/Rolldown linking. Keep a
-    # 4 GiB default, with E2E_BUILD_MEMORY_LIMIT still available for constrained hosts.
-    mem_limit: ${E2E_BUILD_MEMORY_LIMIT:-4g}
+    # Keep CI and constrained hosts bounded by default. Local runs can opt into a larger, still
+    # explicit cgroup using E2E_BUILD_MEMORY_LIMIT (for example, 4g).
+    mem_limit: ${E2E_BUILD_MEMORY_LIMIT:-2g}
     build:
       context: ../..
       dockerfile: tests/e2e/runner.Dockerfile
@@ -55,7 +55,7 @@ services:
       # Keep enough cgroup headroom for Rolldown/Nitro native allocations while allowing the
       # JavaScript heap to finish the production bundle. Keep this aligned with the explicit
       # E2E_BUILD_MEMORY_LIMIT override when increasing the local build budget.
-      NODE_OPTIONS: ${E2E_BUILD_NODE_OPTIONS:---max-old-space-size=3072}
+      NODE_OPTIONS: ${E2E_BUILD_NODE_OPTIONS:---max-old-space-size=1536}
       CODEX_GATEWAY_DB_PATH: /workspace/codex-gateway/.data-e2e/codex-gateway.db
       E2E_GATEWAY_USERNAME: ${E2E_GATEWAY_USERNAME:-e2e}
       E2E_GATEWAY_PASSWORD: ${E2E_GATEWAY_PASSWORD:-codex-gateway-e2e-password}

@@ -24,8 +24,6 @@ export function requestActivateThreadSnapshot(input: {
   projectId: number | null;
   threadId: string;
   limit?: number;
-  signal?: AbortSignal;
-  timeoutMs?: number;
 }) {
   const requestedLimit = Number.isFinite(input.limit)
     ? Math.trunc(input.limit ?? INITIAL_TURN_PAGE_LIMIT)
@@ -42,10 +40,11 @@ export function requestActivateThreadSnapshot(input: {
       limit,
     }),
     expectThreadSnapshot,
-    {
-      signal: input.signal,
-      timeoutMs: input.timeoutMs,
-    },
+    // Legacy app-server rollouts can take longer than 30 seconds to replay even when the first
+    // page contains only two Turns. Use the realtime broker's shared long-operation deadline,
+    // which intentionally exceeds the backend RPC timeout. A shorter transport-specific timer
+    // abandons the browser request while the server keeps loading and later attaches an orphaned
+    // subscription, causing repeated opens to amplify the original slowdown.
   );
 }
 

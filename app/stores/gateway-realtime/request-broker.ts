@@ -11,8 +11,6 @@ interface PendingRealtimeRequest {
   timer: number;
   request: RealtimeRequestMessage;
   errorMode: RealtimeRequestErrorMode;
-  signal?: AbortSignal;
-  abortHandler?: () => void;
 }
 
 export type RealtimeRequestErrorMode = "return" | "notify";
@@ -20,7 +18,6 @@ export type RealtimeRequestErrorMode = "return" | "notify";
 interface RealtimeRequestOptions {
   timeoutMs?: number;
   errorMode?: RealtimeRequestErrorMode;
-  signal?: AbortSignal;
 }
 
 export interface RealtimeRequestRejection {
@@ -66,28 +63,11 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
       typeof parseOrOptions === "function" ? configuredOptions : parseOrOptions;
     const timeoutMs = requestOptions?.timeoutMs ?? REALTIME_REQUEST_TIMEOUT_MS;
     const errorMode = requestOptions?.errorMode ?? "return";
-    const signal = requestOptions?.signal;
-
-    if (signal?.aborted === true) {
-      throw new RealtimeRequestError("Realtime request cancelled", requestMessage, "cancelled", {
-        requestId,
-        ...options.requestContext(requestMessage),
-      });
-    }
 
     const response = await new Promise<RealtimeResponseMessage>((resolve, reject) => {
-      const abortHandler = () => {
-        rejectRequest(
-          requestId,
-          new RealtimeRequestError("Realtime request cancelled", requestMessage, "cancelled", {
-            requestId,
-            ...options.requestContext(requestMessage),
-          }),
-        );
-      };
       const timer = window.setTimeout(() => {
-        rejectRequest(
-          requestId,
+        pendingRequests.delete(requestId);
+        reject(
           new RealtimeRequestError(options.timeoutMessage(), requestMessage, "timeout", {
             requestId,
             timeoutMs,
@@ -102,13 +82,8 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
         timer,
         request: requestMessage,
         errorMode,
-        signal,
-        abortHandler,
       });
-      signal?.addEventListener("abort", abortHandler, { once: true });
-      if (signal?.aborted === true) {
-        abortHandler();
-      } else if (!options.send(requestMessage)) {
+      if (!options.send(requestMessage)) {
         rejectRequest(
           requestId,
           new RealtimeRequestError(options.unavailableMessage(), requestMessage, "unavailable", {
@@ -125,7 +100,6 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
     const pending = pendingRequests.get(message.requestId);
     if (!pending) return;
     window.clearTimeout(pending.timer);
-    pending.signal?.removeEventListener("abort", pending.abortHandler!);
     pendingRequests.delete(message.requestId);
     pending.resolve(message);
   }
@@ -134,7 +108,6 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
     const pending = pendingRequests.get(requestId);
     if (!pending) return { delivered: false, notify: true };
     window.clearTimeout(pending.timer);
-    pending.signal?.removeEventListener("abort", pending.abortHandler!);
     pendingRequests.delete(requestId);
     pending.reject(error);
     return { delivered: true, notify: pending.errorMode === "notify" };

@@ -18,11 +18,10 @@ fi
 export E2E_UID="${E2E_UID:-12345}"
 export E2E_GID="${E2E_GID:-12345}"
 export E2E_CODEX_HOME="${E2E_CODEX_HOME:-$HOME/.codex}"
-# The production bundle transforms more than 7,000 modules and routinely exceeds 2 GiB during
-# Nitro/Rolldown linking. Keep the default local/CI budget at 4 GiB while retaining explicit
-# overrides for constrained runners.
-export E2E_BUILD_MEMORY_LIMIT="${E2E_BUILD_MEMORY_LIMIT:-4g}"
-export E2E_BUILD_NODE_OPTIONS="${E2E_BUILD_NODE_OPTIONS:---max-old-space-size=3072}"
+# The build runner is capped at 2 GiB by default. On a host with spare memory, a bounded local
+# retry can use e.g. E2E_BUILD_MEMORY_LIMIT=4g E2E_BUILD_NODE_OPTIONS=--max-old-space-size=3072.
+export E2E_BUILD_MEMORY_LIMIT="${E2E_BUILD_MEMORY_LIMIT:-2g}"
+export E2E_BUILD_NODE_OPTIONS="${E2E_BUILD_NODE_OPTIONS:---max-old-space-size=1536}"
 
 cleanup() {
   status=$?
