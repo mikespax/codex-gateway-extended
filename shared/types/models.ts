@@ -8,6 +8,8 @@ export interface ModelRecord {
   id: string;
   model: string;
   displayName: string;
+  /** Provider reported by newer app-servers; older model/list payloads omit it. */
+  modelProvider?: string | null;
   description?: string | null;
   hidden?: boolean;
   isDefault?: boolean;

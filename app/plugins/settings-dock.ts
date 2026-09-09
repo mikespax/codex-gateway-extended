@@ -11,6 +11,9 @@ const asyncPanels = {
   SettingsDockHostPanel: defineAsyncComponent(
     () => import("@/components/settings/settings-dock/SettingsDockHostPanel.vue"),
   ),
+  SettingsDockModelPanel: defineAsyncComponent(
+    () => import("@/components/settings/settings-dock/SettingsDockModelPanel.vue"),
+  ),
   SettingsDockNotificationPanel: defineAsyncComponent(
     () => import("@/components/settings/settings-dock/SettingsDockNotificationPanel.vue"),
   ),
