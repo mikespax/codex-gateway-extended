@@ -1,3 +1,4 @@
+/* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-member-access */
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import test from "node:test";
