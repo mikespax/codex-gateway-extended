@@ -25,9 +25,7 @@ const storedRouteSelectionSchema = z.object({
   threadId: z.string().nullable(),
 });
 
-test("active intermediate steps stay behind a working row and collapse after completion", async ({
-  page,
-}) => {
+test("active intermediate steps start expanded and collapse after completion", async ({ page }) => {
   await openApp(page);
   const threadId = "e2e-intermediate-runtime-transition";
   const startedAt = Math.floor(Date.now() / 1000) - 2;
@@ -77,8 +75,8 @@ test("active intermediate steps stay behind a working row and collapse after com
     });
   }, threadId);
 
-  await expect(intermediateToggle).toHaveAttribute("data-state", "closed");
-  await expect(page.getByText("Live work should already be visible")).toHaveCount(0);
+  await expect(intermediateToggle).toHaveAttribute("data-state", "open");
+  await expect(page.getByText("Live work should already be visible")).toBeVisible();
   await expect(page.getByTestId("intermediate-steps-working")).toBeVisible();
   await expect(page.getByTestId("intermediate-header-duration")).toBeVisible();
 

@@ -71,8 +71,6 @@ test("fans out a real remote app-server thread to multiple browser clients acros
     timeout: 120_000,
   });
   const processToggle = firstIntermediateStepsToggle(page);
-  await expect(processToggle).toHaveAttribute("data-state", "closed");
-  await processToggle.click();
   await expect(processToggle).toHaveAttribute("data-state", "open");
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成", {
     timeout: 120_000,
