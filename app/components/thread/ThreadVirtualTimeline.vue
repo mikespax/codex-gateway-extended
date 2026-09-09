@@ -92,11 +92,11 @@ const rows = computed<ThreadTimelineRow[]>((previous) => {
     sections,
     intermediateOpen: isIntermediateOpen(turn.id),
   }));
-  // The disclosure controller owns intermediate-step visibility: active turns start expanded and
-  // settle closed when their turn completes, while an explicit reader choice always wins. Footer
-  // actions consume that result instead of treating one turn/completed event as the end of a Goal
-  // or an automatic continuation. Requiring every disclosure to be closed keeps the actions hidden
-  // while intermediate work is still visible.
+  // The disclosure controller owns intermediate-step visibility: active work stays behind one
+  // compact Working row by default, and readers can expand it explicitly. Footer actions consume
+  // that result instead of treating one turn/completed event as the end of a Goal or an automatic
+  // continuation. Requiring every disclosure to be closed keeps the actions hidden while
+  // intermediate work is still visible.
   const agentActionsAvailable =
     !threadIsRunning.value && timelineTurns.every((turn) => !turn.intermediateOpen);
   const next = buildThreadTimelineRows({

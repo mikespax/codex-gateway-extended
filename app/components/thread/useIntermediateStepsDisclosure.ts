@@ -10,8 +10,6 @@ interface IntermediateDisclosureTurn {
   hasPendingApproval: boolean;
 }
 
-const TERMINAL_TURN_STATUSES = new Set(["completed", "failed", "interrupted"]);
-
 export function useIntermediateStepsDisclosure(input: {
   turns: ComputedRef<IntermediateDisclosureTurn[]>;
   threadIsRunning: ComputedRef<boolean>;
@@ -49,14 +47,12 @@ export function useIntermediateStepsDisclosure(input: {
           openByTurnId.set(turn.id, true);
           continue;
         }
-        // Active turns open as soon as their first intermediate item arrives. Once the turn has a
-        // terminal status, collapse it automatically so a completed transcript stays compact.
+        // Keep live intermediate work behind one compact working row. The row still exposes the
+        // latest operation, elapsed time, and item count, while a reader can expand it explicitly
+        // when the detailed trace is useful. Completed and stale non-terminal turns use the same
+        // compact default so reconnecting an old rollout cannot flood the timeline with commands.
         // Preserve an explicit open/closed choice across both transitions, including a reader who
-        // deliberately keeps a completed trace open for inspection.
-        if (turn.turnIsActive || !TERMINAL_TURN_STATUSES.has(statusValue(turn.status) ?? "")) {
-          if (!touchedByUser.has(turn.id)) openByTurnId.set(turn.id, true);
-          continue;
-        }
+        // deliberately keeps a trace open for inspection.
         if (!touchedByUser.has(turn.id)) openByTurnId.set(turn.id, false);
       }
     },

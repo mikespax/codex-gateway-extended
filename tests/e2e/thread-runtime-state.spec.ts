@@ -25,7 +25,7 @@ const storedRouteSelectionSchema = z.object({
   threadId: z.string().nullable(),
 });
 
-test("intermediate steps start expanded while active and collapse after completion", async ({
+test("active intermediate steps stay behind a working row and collapse after completion", async ({
   page,
 }) => {
   await openApp(page);
@@ -60,8 +60,8 @@ test("intermediate steps start expanded while active and collapse after completi
   const intermediateToggle = page.getByRole("button", {
     name: /Intermediate steps|中间过程/,
   });
-  await expect(intermediateToggle).toHaveAttribute("data-state", "open");
-  await expect(page.getByText("Live work should already be visible")).toBeVisible();
+  await expect(intermediateToggle).toHaveAttribute("data-state", "closed");
+  await expect(page.getByText("Live work should already be visible")).toHaveCount(0);
   await expect(page.getByTestId("intermediate-steps-working")).toHaveCount(0);
   await expect(page.getByTestId("intermediate-header-duration")).toHaveCount(0);
   await expect(page.getByTestId("message-timestamp")).toHaveAttribute(
@@ -77,8 +77,8 @@ test("intermediate steps start expanded while active and collapse after completi
     });
   }, threadId);
 
-  await expect(intermediateToggle).toHaveAttribute("data-state", "open");
-  await expect(page.getByText("Live work should already be visible")).toBeVisible();
+  await expect(intermediateToggle).toHaveAttribute("data-state", "closed");
+  await expect(page.getByText("Live work should already be visible")).toHaveCount(0);
   await expect(page.getByTestId("intermediate-steps-working")).toBeVisible();
   await expect(page.getByTestId("intermediate-header-duration")).toBeVisible();
 
@@ -120,6 +120,7 @@ test("intermediate steps start expanded while active and collapse after completi
 
   await intermediateToggle.click();
   await expect(intermediateToggle).toHaveAttribute("data-state", "open");
+  await expect(page.getByText("Live work should already be visible")).toBeVisible();
   await expect(
     page.getByRole("paragraph").filter({ hasText: "Live work should already be visible" }),
   ).toBeVisible();
