@@ -20,6 +20,7 @@ import { threadRuntimeEvents } from "./thread-runtime-events";
 const RECOVERY_CONCURRENCY = 2;
 const RECOVERY_TIMEOUT_MS = 15_000;
 const UNSUBSCRIBE_TIMEOUT_MS = 5_000;
+const MISSING_ROLLOUT_COOLDOWN_MS = 5 * 60_000;
 
 type ControllerLookup = (threadId: string) => boolean;
 
@@ -46,6 +47,7 @@ class ActiveMainThreadMonitor {
   private readonly pendingByThread = new Map<string, Promise<void>>();
   private readonly pendingRecoveries = new Map<string, Promise<void>>();
   private readonly pendingPinnedRecoveries = new Map<string, Promise<void>>();
+  private readonly unavailableUntil = new Map<string, number>();
   private readonly generations = new Map<string, number>();
 
   async recoverHost(context: MonitorContext) {
@@ -107,6 +109,7 @@ class ActiveMainThreadMonitor {
     if (threadId === null) return;
 
     if (method === "thread/started") {
+      this.clearUnavailable(context.host.id, threadId);
       const thread = startedThread(message);
       if (thread !== null) threadMetadataStore.record(context.host.id, null, thread);
       // `thread/started` also announces newly-created idle threads. Resuming every announcement
@@ -178,14 +181,18 @@ class ActiveMainThreadMonitor {
 
   forgetHost(userId: number, hostId: number) {
     const key = this.hostKey(hostId, userId);
+    const threadPrefix = `${key}:`;
     this.generations.set(key, this.generation(key) + 1);
     this.observedByHost.delete(key);
     this.pendingRecoveries.delete(key);
     this.pendingPinnedRecoveries.delete(key);
     for (const key of this.pendingByThread.keys()) {
-      if (key.startsWith(`${this.hostKey(hostId, userId)}:`)) {
+      if (key.startsWith(threadPrefix)) {
         this.pendingByThread.delete(key);
       }
+    }
+    for (const key of this.unavailableUntil.keys()) {
+      if (key.startsWith(threadPrefix)) this.unavailableUntil.delete(key);
     }
   }
 
@@ -250,6 +257,7 @@ class ActiveMainThreadMonitor {
         await this.observeThread(context, threadId);
       }
     } catch (error) {
+      if (isMissingRolloutError(error)) this.suppressUnavailable(hostKey, threadId);
       runtimeLog("pinned thread status probe failed", {
         hostId: context.host.id,
         hostName: context.host.name,
@@ -262,6 +270,7 @@ class ActiveMainThreadMonitor {
   private async observeThread(context: MonitorContext, threadId: string) {
     if (context.hasController(threadId)) return;
     const hostKey = this.hostKey(context.host.id);
+    if (this.isUnavailable(hostKey, threadId)) return;
     const observed = this.observedByHost.get(hostKey);
     if (observed?.has(threadId) === true) return;
 
@@ -301,14 +310,20 @@ class ActiveMainThreadMonitor {
     threadId: string,
     generation: number,
   ) {
-    const result = await context.client.request(
-      "thread/resume",
-      { threadId, excludeTurns: true },
-      RECOVERY_TIMEOUT_MS,
-    );
+    const hostKey = this.hostKey(context.host.id);
+    let result: unknown;
+    try {
+      result = await context.client.request(
+        "thread/resume",
+        { threadId, excludeTurns: true },
+        RECOVERY_TIMEOUT_MS,
+      );
+    } catch (error) {
+      if (isMissingRolloutError(error)) this.suppressUnavailable(hostKey, threadId);
+      throw error;
+    }
     const resultRecord = recordFromUnknown(result);
     const thread = appServerThreadFromUnknown(resultRecord?.thread ?? result);
-    const hostKey = this.hostKey(context.host.id);
     if (!this.isCurrent(hostKey, generation) || context.hasController(threadId)) return;
 
     if (thread === null || isAppServerSubAgentThread(thread) || !isActive(thread)) {
@@ -357,6 +372,30 @@ class ActiveMainThreadMonitor {
 
   private isCurrent(key: string, generation: number) {
     return this.generation(key) === generation;
+  }
+
+  private unavailableKey(hostKey: string, threadId: string) {
+    return `${hostKey}:${threadId}`;
+  }
+
+  private isUnavailable(hostKey: string, threadId: string) {
+    const key = this.unavailableKey(hostKey, threadId);
+    const until = this.unavailableUntil.get(key);
+    if (until === undefined) return false;
+    if (until > Date.now()) return true;
+    this.unavailableUntil.delete(key);
+    return false;
+  }
+
+  private suppressUnavailable(hostKey: string, threadId: string) {
+    this.unavailableUntil.set(
+      this.unavailableKey(hostKey, threadId),
+      Date.now() + MISSING_ROLLOUT_COOLDOWN_MS,
+    );
+  }
+
+  private clearUnavailable(hostId: number, threadId: string) {
+    this.unavailableUntil.delete(this.unavailableKey(this.hostKey(hostId), threadId));
   }
 }
 
@@ -460,6 +499,11 @@ function requiredUserId() {
 
 function messageFromError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isMissingRolloutError(error: unknown) {
+  const message = messageFromError(error).toLowerCase();
+  return message.includes("no rollout found") || message.includes("rollout not found");
 }
 
 export const activeMainThreadMonitor = new ActiveMainThreadMonitor();
