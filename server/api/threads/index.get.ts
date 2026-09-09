@@ -14,11 +14,26 @@ import { threadSnapshotStore } from "../../utils/gateway/state/thread-snapshots"
 import { remoteFiles, threadStorage } from "../../utils/gateway/infra/host-services";
 import { withAllThreadSources } from "../../utils/gateway/protocol/thread-list";
 import { threadProjectDiscovery } from "../../utils/gateway/runtime/thread-project-discovery";
-import type { AppServerThread, GatewayThread, ProjectRecord } from "~~/shared/types";
+import type {
+  AppServerThread,
+  GatewayThread,
+  ProjectDirectoryAvailability,
+  ProjectRecord,
+} from "~~/shared/types";
 import type { HostWithSecret } from "../../utils/gateway/infra/ssh/ssh-types";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 import { gatewayThreadFromAppServer } from "../../utils/gateway/protocol/gateway-thread";
 import { HOT_THREAD_LIST_LIMIT } from "~~/shared/config";
+
+const PROJECT_DIRECTORY_AVAILABILITY_TTL_MS = 60_000;
+interface ProjectDirectoryAvailabilityCacheEntry {
+  fingerprint: string;
+  updatedAt: number;
+  value: Record<number, ProjectDirectoryAvailability>;
+}
+
+const projectDirectoryAvailabilityCache = new Map<string, ProjectDirectoryAvailabilityCacheEntry>();
+const pendingProjectDirectoryAvailability = new Map<string, Promise<void>>();
 
 export default defineGatewayEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (body) => threadListSchema.parse(body));
@@ -82,7 +97,7 @@ export default defineGatewayEventHandler(async (event) => {
   // Storage is advisory and must never delay an authoritative thread list. Refresh uncached
   // values in the background; the next sidebar refresh will pick them up.
   void threadStorage.scan(host, gatewayThreads).catch(() => undefined);
-  const projectDirectoryAvailability = await inspectProjectAvailability(host, projects);
+  const projectDirectoryAvailability = projectDirectoryAvailabilityForList(userId, host, projects);
   return {
     ...page,
     data: threadsWithStorage,
@@ -115,6 +130,47 @@ async function inspectProjectAvailability(
     });
     return {};
   }
+}
+
+function projectDirectoryAvailabilityForList(
+  userId: number | undefined,
+  host: HostWithSecret,
+  projects: Array<{ id: number; remotePath: string }>,
+) {
+  const key = `${userId ?? "anonymous"}:${host.id}`;
+  const fingerprint = projects
+    .map((project) => `${project.id}:${project.remotePath}`)
+    .sort()
+    .join("|");
+  const cached = projectDirectoryAvailabilityCache.get(key);
+  const cacheIsFresh =
+    cached !== undefined &&
+    cached.fingerprint === fingerprint &&
+    Date.now() - cached.updatedAt < PROJECT_DIRECTORY_AVAILABILITY_TTL_MS;
+  if (!cacheIsFresh && pendingProjectDirectoryAvailability.get(key) === undefined) {
+    const pending = inspectProjectAvailability(host, projects)
+      .then((availability) => {
+        projectDirectoryAvailabilityCache.set(key, {
+          fingerprint,
+          updatedAt: Date.now(),
+          value: availability,
+        });
+      })
+      .catch((error: unknown) => {
+        console.warn("[gateway] background project directory inspection failed", {
+          hostId: host.id,
+          hostName: host.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        if (pendingProjectDirectoryAvailability.get(key) === pending) {
+          pendingProjectDirectoryAvailability.delete(key);
+        }
+      });
+    pendingProjectDirectoryAvailability.set(key, pending);
+  }
+  return cached?.fingerprint === fingerprint ? cached.value : {};
 }
 
 function shouldDiscoverHostProjects(query: {

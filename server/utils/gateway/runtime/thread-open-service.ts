@@ -63,9 +63,8 @@ export class ThreadOpenService {
             snapshotEventCursor,
           )
         : null;
-    let cachedSnapshot = memorySnapshot ?? persistentCandidate?.snapshot ?? null;
+    const cachedSnapshot = memorySnapshot ?? persistentCandidate?.snapshot ?? null;
     const fallbackRuntimeStatus = persistentCandidate?.authoritativeStatus ?? null;
-    let cacheValidationFailed = false;
     const cachedSnapshotEventCursor =
       persistentCandidate?.verified === true
         ? persistentCandidate.lastEventId
@@ -74,34 +73,19 @@ export class ThreadOpenService {
       this.noteCacheValidation(host.id, threadId);
     }
     if (cachedSnapshot) {
-      let cacheChanged = false;
       if (
         memorySnapshot !== null &&
         persistentCandidate?.verified !== false &&
         this.shouldValidateCachedThread(host.id, threadId)
       ) {
-        try {
-          cacheChanged = await this.validateCachedThread(host, threadId, cachedSnapshot);
-          if (cacheChanged) {
-            // The metadata check updates the stored snapshot before the history refresh. Use that
-            // newer thread identity as the fallback if the subsequent page read is unavailable.
-            cachedSnapshot = threadSnapshotStore.get(host.id, threadId) ?? cachedSnapshot;
-          }
-        } catch (error) {
-          // Freshness is advisory. Keep the fast cached view available during a transient RPC
-          // failure, but do not report it as an authoritative activation result. The caller can
-          // still use it as an explicit fallback if the full refresh also fails.
-          cacheValidationFailed = true;
-          runtimeLog("thread cache validation failed", {
-            hostId: host.id,
-            threadId,
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
+        // Freshness is advisory and must never hold the browser activation open. A thread/read
+        // against a large or temporarily busy rollout can take the full RPC timeout; the cached
+        // snapshot is already projected from realtime events and is safe to render immediately.
+        // The background validation updates the server cache and schedules a full refresh only if
+        // the authoritative metadata changed.
+        this.queueCachedThreadValidation(host, threadId, projectId, cachedSnapshot, limit);
       }
       if (
-        !cacheChanged &&
-        !cacheValidationFailed &&
         persistentCandidate?.verified !== false &&
         snapshotSatisfiesTurnLimit(cachedSnapshot, limit)
       ) {
@@ -176,6 +160,37 @@ export class ThreadOpenService {
       }
       throw error;
     }
+  }
+
+  private queueCachedThreadValidation(
+    host: HostRecord,
+    threadId: string,
+    projectId: number | null,
+    cachedSnapshot: ThreadOpenSnapshot,
+    limit: number,
+  ) {
+    const key = refreshKey(host.id, threadId);
+    if (this.pendingCacheValidations.has(key)) return;
+
+    const validation = this.validateCachedThread(host, threadId, cachedSnapshot);
+    void validation
+      .then((changed) => {
+        if (!changed) return;
+        return this.refreshThreadState(host, threadId, projectId, limit).catch((error: unknown) => {
+          runtimeLog("thread cache background refresh failed", {
+            hostId: host.id,
+            threadId,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+      })
+      .catch((error: unknown) => {
+        runtimeLog("thread cache background validation failed", {
+          hostId: host.id,
+          threadId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
   }
 
   private shouldValidateCachedThread(hostId: number, threadId: string) {
