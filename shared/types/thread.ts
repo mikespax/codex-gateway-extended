@@ -8,6 +8,8 @@ export interface ThreadRuntimeStatusUpdate {
   threadId: string;
   status: ThreadRuntimeStatus;
   turnId?: string | null;
+  /** Advisory, bounded label for sidebar rows that are not currently open. */
+  currentOperation?: string | null;
 }
 export type ThreadGoalStatus =
   | "active"

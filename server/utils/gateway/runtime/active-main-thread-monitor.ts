@@ -10,11 +10,12 @@ import {
 } from "~~/shared/runtime/app-server";
 import { recordFromUnknown } from "~~/shared/utils/records";
 import { threadIdFromNotification } from "../protocol/thread-payload";
-import { currentGatewayUserId } from "../state/memory";
+import { currentGatewayUserId, gatewayMemoryState } from "../state/memory";
 import type { CodexRpcClient } from "../infra/rpc/rpc";
 import { runtimeLog } from "./runtime-log";
 import { runtimeStatusFromAppThreadStatus } from "~~/shared/thread-runtime-status";
 import { threadMetadataStore } from "../state/thread-metadata";
+import { threadRuntimeEvents } from "./thread-runtime-events";
 
 const RECOVERY_CONCURRENCY = 2;
 const RECOVERY_TIMEOUT_MS = 15_000;
@@ -44,6 +45,7 @@ class ActiveMainThreadMonitor {
   private readonly observedByHost = new Map<string, Set<string>>();
   private readonly pendingByThread = new Map<string, Promise<void>>();
   private readonly pendingRecoveries = new Map<string, Promise<void>>();
+  private readonly pendingPinnedRecoveries = new Map<string, Promise<void>>();
   private readonly generations = new Map<string, number>();
 
   async recoverHost(context: MonitorContext) {
@@ -68,6 +70,34 @@ class ActiveMainThreadMonitor {
         }
       });
     this.pendingRecoveries.set(hostKey, recovery);
+    return recovery;
+  }
+
+  /**
+   * Pinned threads are the user's live sidebar contract. They may not appear in
+   * `thread/loaded/list` when their app-server client started them before Gateway connected, so
+   * probe only this small explicit set and subscribe only to threads whose metadata is active.
+   */
+  async recoverPinnedThreads(context: MonitorContext) {
+    const hostKey = this.hostKey(context.host.id);
+    const pending = this.pendingPinnedRecoveries.get(hostKey);
+    if (pending !== undefined) return pending;
+
+    const generation = this.generation(hostKey);
+    const recovery = this.recoverConfiguredPinnedThreads(context, hostKey, generation)
+      .catch((error) => {
+        runtimeLog("pinned thread recovery failed", {
+          hostId: context.host.id,
+          hostName: context.host.name,
+          message: messageFromError(error),
+        });
+      })
+      .finally(() => {
+        if (this.pendingPinnedRecoveries.get(hostKey) === recovery) {
+          this.pendingPinnedRecoveries.delete(hostKey);
+        }
+      });
+    this.pendingPinnedRecoveries.set(hostKey, recovery);
     return recovery;
   }
 
@@ -151,6 +181,7 @@ class ActiveMainThreadMonitor {
     this.generations.set(key, this.generation(key) + 1);
     this.observedByHost.delete(key);
     this.pendingRecoveries.delete(key);
+    this.pendingPinnedRecoveries.delete(key);
     for (const key of this.pendingByThread.keys()) {
       if (key.startsWith(`${this.hostKey(hostId, userId)}:`)) {
         this.pendingByThread.delete(key);
@@ -169,6 +200,63 @@ class ActiveMainThreadMonitor {
         }),
       ),
     );
+  }
+
+  private async recoverConfiguredPinnedThreads(
+    context: MonitorContext,
+    hostKey: string,
+    generation: number,
+  ) {
+    const threadIds = pinnedThreadIdsForHost(context.host.id);
+    if (threadIds.length === 0) return;
+    const limit = pLimit(RECOVERY_CONCURRENCY);
+    await Promise.all(
+      threadIds.map((threadId) =>
+        limit(async () => {
+          if (!this.isCurrent(hostKey, generation)) return;
+          await this.probePinnedThread(context, threadId, hostKey, generation);
+        }),
+      ),
+    );
+  }
+
+  private async probePinnedThread(
+    context: MonitorContext,
+    threadId: string,
+    hostKey: string,
+    generation: number,
+  ) {
+    if (context.hasController(threadId) || this.hasObservedThread(context.host.id, threadId))
+      return;
+    try {
+      const result = await context.client.request(
+        "thread/read",
+        { threadId, includeTurns: false },
+        RECOVERY_TIMEOUT_MS,
+      );
+      const resultRecord = recordFromUnknown(result);
+      const thread = appServerThreadFromUnknown(resultRecord?.thread ?? result);
+      if (!this.isCurrent(hostKey, generation) || thread === null) return;
+      if (isAppServerSubAgentThread(thread)) return;
+      threadMetadataStore.record(context.host.id, null, thread);
+      const status = runtimeStatusFromAppThreadStatus(thread.status);
+      // Publish the probe result immediately so the sidebar converges even when the upstream
+      // resume response does not repeat a status event.
+      threadRuntimeEvents.record(context.host.id, threadId, "thread/status/changed", {
+        method: "thread/status/changed",
+        params: { threadId, status: thread.status },
+      });
+      if (status === "running") {
+        await this.observeThread(context, threadId);
+      }
+    } catch (error) {
+      runtimeLog("pinned thread status probe failed", {
+        hostId: context.host.id,
+        hostName: context.host.name,
+        threadId,
+        message: messageFromError(error),
+      });
+    }
   }
 
   private async observeThread(context: MonitorContext, threadId: string) {
@@ -270,6 +358,16 @@ class ActiveMainThreadMonitor {
   private isCurrent(key: string, generation: number) {
     return this.generation(key) === generation;
   }
+}
+
+function pinnedThreadIdsForHost(hostId: number) {
+  return [
+    ...new Set(
+      gatewayMemoryState.pinnedThreads
+        .filter((thread) => thread.hostId === hostId && thread.threadId.trim() !== "")
+        .map((thread) => thread.threadId.trim()),
+    ),
+  ];
 }
 
 async function loadedThreadIds(client: CodexRpcClient) {

@@ -20,14 +20,34 @@ class ThreadRuntimeStatusHub {
   publish(userId: number, update: ThreadRuntimeStatusUpdate) {
     const running = this.runningByUser.get(userId) ?? new Map<string, ThreadRuntimeStatusUpdate>();
     const key = statusKey(update.hostId, update.threadId);
-    if (update.status === "running") {
-      running.set(key, update);
+    const previous = running.get(key);
+    const nextUpdate =
+      update.status === "running" && previous !== undefined
+        ? {
+            ...update,
+            turnId: update.turnId ?? previous.turnId,
+            currentOperation:
+              update.currentOperation === undefined
+                ? previous.currentOperation
+                : update.currentOperation,
+          }
+        : update;
+    if (
+      previous !== undefined &&
+      nextUpdate.status === previous.status &&
+      nextUpdate.turnId === previous.turnId &&
+      nextUpdate.currentOperation === previous.currentOperation
+    ) {
+      return;
+    }
+    if (nextUpdate.status === "running") {
+      running.set(key, nextUpdate);
       this.runningByUser.set(userId, running);
     } else {
       running.delete(key);
       if (running.size === 0) this.runningByUser.delete(userId);
     }
-    this.emitters.get(userId)?.emit("updated", update);
+    this.emitters.get(userId)?.emit("updated", nextUpdate);
   }
 
   subscribe(userId: number, listener: (update: ThreadRuntimeStatusUpdate) => void) {

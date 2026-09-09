@@ -23,11 +23,13 @@ import { hostSessionEvents, type HostSessionClosedEvent } from "./host-session-e
 import { activeMainThreadMonitor } from "./active-main-thread-monitor";
 import { threadBroker } from "./broker";
 import { hostMetricsManager } from "../infra/host-services";
+import { pinnedThreadEvents } from "../config/pinned-thread-events";
 
 class HostRuntimeSupervisor {
   private readonly slots = new Map<string, HostRuntimeSlot>();
   private unsubscribeSessionClosed: (() => void) | null = null;
   private unsubscribeDatabaseReady: (() => void) | null = null;
+  private readonly unsubscribePinnedThreadsByUser = new Map<number, () => void>();
   private bootstrappedStoredUsers = false;
   private started = false;
 
@@ -53,6 +55,8 @@ class HostRuntimeSupervisor {
     this.unsubscribeDatabaseReady?.();
     this.unsubscribeSessionClosed = null;
     this.unsubscribeDatabaseReady = null;
+    for (const unsubscribe of this.unsubscribePinnedThreadsByUser.values()) unsubscribe();
+    this.unsubscribePinnedThreadsByUser.clear();
     this.bootstrappedStoredUsers = false;
     for (const slot of Array.from(this.slots.values())) {
       this.removeSlot(this.slotKey(slot.userId, slot.hostId), slot);
@@ -65,6 +69,7 @@ class HostRuntimeSupervisor {
       return;
     }
     const state = currentGatewayMemoryState();
+    this.ensurePinnedThreadSubscription(userId);
     this.syncUserConfig(userId, {
       hosts: state.hosts,
     });
@@ -77,6 +82,7 @@ class HostRuntimeSupervisor {
     this.bootstrappedStoredUsers = true;
     for (const { user, config } of userStore.listStoredConfigs()) {
       runWithGatewayUser(user.id, () => {
+        this.ensurePinnedThreadSubscription(user.id);
         const state = currentGatewayMemoryState();
         if (!state.configLoaded) {
           const nextState = buildGatewayMemoryState(config);
@@ -107,6 +113,36 @@ class HostRuntimeSupervisor {
       if (slot.userId === userId && !activeHostIds.has(slot.hostId)) {
         this.removeSlot(key, slot);
       }
+    }
+  }
+
+  private ensurePinnedThreadSubscription(userId: number) {
+    if (this.unsubscribePinnedThreadsByUser.has(userId)) return;
+    const unsubscribe = pinnedThreadEvents.subscribe(userId, () => {
+      this.refreshPinnedThreadMonitoring(userId);
+    });
+    this.unsubscribePinnedThreadsByUser.set(userId, unsubscribe);
+  }
+
+  private refreshPinnedThreadMonitoring(userId: number) {
+    for (const slot of this.slots.values()) {
+      if (slot.userId !== userId || slot.connecting || slot.timer !== null) continue;
+      void runWithGatewayUser(userId, async () => {
+        try {
+          const client = await threadBroker.getHostClient(slot.host);
+          await activeMainThreadMonitor.recoverPinnedThreads({
+            host: slot.host,
+            client,
+            hasController: (threadId) => threadBroker.hasController(slot.host.id, threadId),
+          });
+        } catch (error) {
+          console.warn("[gateway] pinned thread monitoring refresh failed", {
+            userId,
+            hostId: slot.hostId,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
     }
   }
 
