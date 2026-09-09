@@ -83,6 +83,7 @@ test("uses the mobile layout with hidden sidebar and usable composer shell", asy
   await expect(page.getByTestId("settings-toggle")).toBeHidden();
 
   await expect(page.getByTestId("chat-scroll-area")).toBeVisible();
+  await expect(page.getByTestId("gateway-build-version")).toHaveText("Gateway unknown");
   await expect(page.getByTestId("codex-usage-badge")).toHaveText("73%");
   await expect(page.getByTestId("codex-usage-badge")).toHaveAttribute("aria-label", /73%/);
   await expect(page.getByTestId("decrease-chat-text-size")).toBeVisible();

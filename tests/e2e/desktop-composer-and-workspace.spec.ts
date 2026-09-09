@@ -18,6 +18,7 @@ test("focuses the desktop composer, sends with Enter, and keeps Shift+Enter mult
   });
 
   const composer = page.getByTestId("composer-input");
+  await expect(page.getByTestId("gateway-build-version")).toHaveText("Gateway unknown");
   await expect(composer).toBeFocused();
   await composer.fill("First desktop line");
   await composer.press("Shift+Enter");
