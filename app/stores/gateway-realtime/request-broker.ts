@@ -27,6 +27,7 @@ export interface RealtimeRequestRejection {
 
 interface RealtimeRequestBrokerOptions {
   waitForReady: (timeoutMs: number) => Promise<void>;
+  ensureHealthy: () => Promise<void>;
   send: (message: RealtimeClientMessage) => boolean;
   unavailableMessage: () => string;
   timeoutMessage: () => string;
@@ -55,6 +56,7 @@ export function createRealtimeRequestBroker(options: RealtimeRequestBrokerOption
     parseOrOptions?: ((message: RealtimeResponseMessage) => T) | RealtimeRequestOptions,
     configuredOptions?: RealtimeRequestOptions,
   ): Promise<RealtimeResponseMessage | T> {
+    await options.ensureHealthy();
     await options.waitForReady(REALTIME_READY_TIMEOUT_MS);
     const requestId = `gateway-ws-${createUuid()}`;
     const requestMessage = buildMessage(requestId);
