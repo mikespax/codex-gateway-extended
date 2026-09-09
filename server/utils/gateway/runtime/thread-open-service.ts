@@ -39,6 +39,7 @@ export class ThreadOpenService {
     { limit: number; promise: Promise<ReturnTypeResult> }
   >();
   private readonly pendingCacheValidations = new Map<string, Promise<boolean>>();
+  private readonly pendingPersistentValidations = new Map<string, Promise<void>>();
   private readonly lastCacheValidationAt = new Map<string, number>();
 
   constructor(private readonly registry: ControllerRegistry) {}
@@ -54,30 +55,27 @@ export class ThreadOpenService {
   ) {
     const snapshotEventCursor = afterEventId ?? gatewayEventStore.latestId(host.id, threadId);
     const memorySnapshot = threadSnapshotStore.get(host.id, threadId);
-    const persistentCandidate =
-      memorySnapshot === null
-        ? await this.restoreVerifiedPersistentSnapshot(
-            host,
-            threadId,
-            projectId,
-            snapshotEventCursor,
-          )
+    // A persisted snapshot is a renderable recovery cache after a Gateway restart. Do not make
+    // the browser wait for its advisory identity check: legacy rollouts can make thread/read take
+    // the full RPC timeout. Only restore it when this process has no retained event cursor, so we
+    // never advance past events that the persisted snapshot could not have seen.
+    const persistentSnapshot =
+      memorySnapshot === null && snapshotEventCursor === 0
+        ? threadSnapshotStore.restorePersistent(host.id, threadId)
         : null;
-    const cachedSnapshot = memorySnapshot ?? persistentCandidate?.snapshot ?? null;
-    const fallbackRuntimeStatus = persistentCandidate?.authoritativeStatus ?? null;
-    const cachedSnapshotEventCursor =
-      persistentCandidate?.verified === true
-        ? persistentCandidate.lastEventId
-        : snapshotEventCursor;
-    if (persistentCandidate?.verified === true) {
-      this.noteCacheValidation(host.id, threadId);
+    const cachedSnapshot = memorySnapshot ?? persistentSnapshot;
+    const cachedSnapshotEventCursor = snapshotEventCursor;
+    if (persistentSnapshot !== null && snapshotSatisfiesTurnLimit(persistentSnapshot, limit)) {
+      threadSnapshotStore.hydratePersistent(host.id, threadId, persistentSnapshot);
+      runtimeLog("persistent thread cache immediate", {
+        hostId: host.id,
+        threadId,
+        cachedTurns: threadTurnsFromHistory(persistentSnapshot.history).length,
+      });
+      this.queuePersistentThreadValidation(host, threadId, projectId, snapshotEventCursor, limit);
     }
     if (cachedSnapshot) {
-      if (
-        memorySnapshot !== null &&
-        persistentCandidate?.verified !== false &&
-        this.shouldValidateCachedThread(host.id, threadId)
-      ) {
+      if (memorySnapshot !== null && this.shouldValidateCachedThread(host.id, threadId)) {
         // Freshness is advisory and must never hold the browser activation open. A thread/read
         // against a large or temporarily busy rollout can take the full RPC timeout; the cached
         // snapshot is already projected from realtime events and is safe to render immediately.
@@ -85,10 +83,7 @@ export class ThreadOpenService {
         // the authoritative metadata changed.
         this.queueCachedThreadValidation(host, threadId, projectId, cachedSnapshot, limit);
       }
-      if (
-        persistentCandidate?.verified !== false &&
-        snapshotSatisfiesTurnLimit(cachedSnapshot, limit)
-      ) {
+      if (snapshotSatisfiesTurnLimit(cachedSnapshot, limit)) {
         // Runtime notifications are projected into this snapshot as they arrive, including the
         // active Turn's cumulative output and status. Re-reading a running thread here would make
         // every browser activation call thread/turns/list again. For legacy rollouts app-server
@@ -106,14 +101,12 @@ export class ThreadOpenService {
           cachedSnapshotEventCursor,
         );
       }
-      if (persistentCandidate?.verified !== false) {
-        runtimeLog("thread cache depth refresh", {
-          hostId: host.id,
-          threadId,
-          cachedTurns: threadTurnsFromHistory(cachedSnapshot.history).length,
-          requestedTurns: limit,
-        });
-      }
+      runtimeLog("thread cache depth refresh", {
+        hostId: host.id,
+        threadId,
+        cachedTurns: threadTurnsFromHistory(cachedSnapshot.history).length,
+        requestedTurns: limit,
+      });
     } else {
       runtimeLog("thread cache miss", {
         hostId: host.id,
@@ -153,7 +146,7 @@ export class ThreadOpenService {
           projectId,
           cachedSnapshot,
           projectCwd,
-          fallbackRuntimeStatus,
+          null,
           cachedSnapshotEventCursor,
           true,
         );
@@ -191,6 +184,58 @@ export class ThreadOpenService {
           message: error instanceof Error ? error.message : String(error),
         });
       });
+  }
+
+  private queuePersistentThreadValidation(
+    host: HostRecord,
+    threadId: string,
+    projectId: number | null,
+    afterEventId: number,
+    limit: number,
+  ) {
+    const key = refreshKey(host.id, threadId);
+    if (this.pendingPersistentValidations.has(key)) return;
+
+    // Mark the attempt before starting the remote read so repeated browser activations after a
+    // restart cannot create a validation storm while the first legacy rollout is still busy.
+    this.noteCacheValidation(host.id, threadId);
+    const validation = this.restoreVerifiedPersistentSnapshot(
+      host,
+      threadId,
+      projectId,
+      afterEventId,
+    )
+      .then(async (candidate) => {
+        if (candidate === null || candidate.validation !== "rejected") return;
+        await this.refreshThreadState(host, threadId, projectId, limit).catch((error: unknown) => {
+          runtimeLog("persistent thread cache background refresh failed", {
+            hostId: host.id,
+            threadId,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+        this.noteCacheValidation(host.id, threadId);
+      })
+      .catch((error: unknown) => {
+        runtimeLog("persistent thread cache background validation failed", {
+          hostId: host.id,
+          threadId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    this.pendingPersistentValidations.set(key, validation);
+    void validation.then(
+      () => {
+        if (this.pendingPersistentValidations.get(key) === validation) {
+          this.pendingPersistentValidations.delete(key);
+        }
+      },
+      () => {
+        if (this.pendingPersistentValidations.get(key) === validation) {
+          this.pendingPersistentValidations.delete(key);
+        }
+      },
+    );
   }
 
   private shouldValidateCachedThread(hostId: number, threadId: string) {
@@ -277,6 +322,7 @@ export class ThreadOpenService {
       return {
         snapshot,
         verified: false,
+        validation: "unavailable",
         authoritativeStatus: null,
         lastEventId: afterEventId,
       };
@@ -299,6 +345,7 @@ export class ThreadOpenService {
       return {
         snapshot,
         verified: false,
+        validation: "rejected",
         authoritativeStatus: status,
         lastEventId: afterEventId,
       };
@@ -327,6 +374,7 @@ export class ThreadOpenService {
     return {
       snapshot: reconciledSnapshot,
       verified: true,
+      validation: "verified",
       authoritativeStatus: status,
       lastEventId,
     };
@@ -655,6 +703,7 @@ type ReturnTypeResult = Awaited<ReturnType<ThreadOpenService["performThreadState
 interface PersistentThreadSnapshotCandidate {
   snapshot: ThreadOpenSnapshot;
   verified: boolean;
+  validation: "verified" | "rejected" | "unavailable";
   authoritativeStatus: ThreadRuntimeStatus | null;
   lastEventId: number;
 }
@@ -730,5 +779,8 @@ function applyEventsAfter(
       applyEventToOpenSnapshot(reconciled, event.method, event.payload, event.createdAt) ??
       reconciled;
   }
-  return { snapshot: reconciled, lastEventId: events.at(-1)?.id ?? afterEventId };
+  return {
+    snapshot: reconciled,
+    lastEventId: events.at(-1)?.id ?? afterEventId,
+  };
 }
