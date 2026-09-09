@@ -156,6 +156,54 @@ test("same-page thread switches retain the loaded history depth", async ({ page 
   ]);
 });
 
+test("a repeated activation retries after a stalled request", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-retry-stalled-thread-activation";
+  await seedGatewayThread(page, {
+    projectId: 1,
+    threadId: null,
+    currentThread: null,
+    history: null,
+    threads: [{ id: threadId, name: "Retry stalled activation" }],
+  });
+  await installRealtimeThreadSnapshotMock(page, {
+    dropActivationCount: 1,
+    snapshots: {
+      [threadId]: {
+        thread: { id: threadId, name: "Retry stalled activation" },
+        history: {
+          thread: { id: threadId, turns: buildTextTurns(1, 1, "retried thread content") },
+        },
+        projectId: 1,
+      },
+    },
+  });
+
+  await page.evaluate((threadId) => {
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    void driver.views.openThread(threadId, { hostId: 1, projectId: 1 });
+  }, threadId);
+  await expect.poll(() => threadActivateRequests(page).then((requests) => requests.length)).toBe(1);
+
+  await page.evaluate(async (threadId) => {
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    await driver.views.openThread(threadId, { hostId: 1, projectId: 1 });
+  }, threadId);
+
+  await expect.poll(() => threadActivateRequests(page).then((requests) => requests.length)).toBe(2);
+  await expect(page.getByText(/retried thread content 001/)).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        loading: window.__codexGatewayE2e?.views.loading,
+        selectedThreadId: window.__codexGatewayE2e?.navigation.selectedThreadId,
+      })),
+    )
+    .toEqual({ loading: false, selectedThreadId: threadId });
+});
+
 test("a cached thread stays hidden until the authoritative snapshot arrives", async ({ page }) => {
   await openApp(page);
   const threadId = "e2e-indexeddb-stale-while-revalidate";
