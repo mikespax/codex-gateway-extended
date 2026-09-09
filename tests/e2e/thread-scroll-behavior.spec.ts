@@ -458,10 +458,12 @@ test("streaming output stays pinned when the user is already at the latest conte
   });
 
   await expect(page.getByText("pinned stream line 090")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Intermediate steps|中间过程/ })).toHaveAttribute(
-    "data-state",
-    "open",
-  );
+  const pinnedIntermediateToggle = page.getByRole("button", {
+    name: /Intermediate steps|中间过程/,
+  });
+  await expect(pinnedIntermediateToggle).toHaveAttribute("data-state", "closed");
+  await pinnedIntermediateToggle.click();
+  await expect(pinnedIntermediateToggle).toHaveAttribute("data-state", "open");
   await scrollChatViewportToBottom(page);
   await expect(page.getByTestId("chat-scroll-area")).toHaveAttribute("data-follow-latest", "true");
 
