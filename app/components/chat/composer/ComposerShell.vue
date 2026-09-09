@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type {
   ModelRecord,
   ReasoningEffort,
@@ -85,6 +85,11 @@ const isDraggingFiles = ref(false);
 const keyboardInset = ref(0);
 let restingVisualViewportHeight = 0;
 let visualViewport: VisualViewport | null = null;
+const runtimeConfig = useRuntimeConfig();
+const gatewayBuildSha = computed(() => {
+  const value = runtimeConfig.public.gatewayBuildSha;
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : "unknown";
+});
 
 function syncKeyboardInset() {
   const viewport = visualViewport;
@@ -269,6 +274,14 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           @paste="emit('paste', $event)"
           @limit="emit('fileReferenceLimit', $event)"
         />
+        <div
+          v-if="!hasComposerInput"
+          data-testid="gateway-build-version"
+          class="pointer-events-none select-none px-1 text-[0.625rem] leading-3 text-ink-faint/35"
+          aria-label="Gateway build version"
+        >
+          Gateway {{ gatewayBuildSha }}
+        </div>
         <ComposerToolbar
           :uploading-attachments="uploadingAttachments"
           :selected-thread-id="selectedThreadId"
