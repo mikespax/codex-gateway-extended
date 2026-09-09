@@ -19,6 +19,7 @@ export function useIntermediateStepsDisclosure(input: {
   // coupling expansion to virtualizer measurements or a global store.
   const openByTurnId = reactive(new Map<string, boolean>());
   const touchedByUser = new Set<string>();
+  const wasActiveByTurnId = new Map<string, boolean>();
 
   watch(
     () => [
@@ -35,25 +36,37 @@ export function useIntermediateStepsDisclosure(input: {
         if (!liveTurnIds.has(turnId)) {
           openByTurnId.delete(turnId);
           touchedByUser.delete(turnId);
+          wasActiveByTurnId.delete(turnId);
         }
       }
 
       for (const turn of input.turns.value) {
+        const wasActive = wasActiveByTurnId.get(turn.id) ?? false;
+        const ended = wasActive && !turn.turnIsActive;
+
+        // A turn that just ended always returns to the compact history view. This deliberately
+        // clears a temporary live-turn choice so a reader who collapsed or expanded the stream
+        // while it was running does not leave a completed transcript permanently expanded.
+        if (ended) {
+          touchedByUser.delete(turn.id);
+          openByTurnId.set(turn.id, false);
+        }
+
         // A rollout created before the Gateway full-access invariant may still have one
         // in-flight approval request. Keep that exception visible so an old turn cannot appear
         // frozen behind a collapsed Working row. New turns never create this state because every
         // Gateway start/resume/settings request forces approvalPolicy=never.
-        if (turn.hasPendingApproval && !touchedByUser.has(turn.id)) {
+        // Live work starts expanded so the user can follow the turn as it happens. The arrow can
+        // still be used to hide or reveal the stream during execution; completion above then
+        // returns it to the compact history state. Completed and stale turns start closed.
+        if (!ended && turn.hasPendingApproval && !touchedByUser.has(turn.id)) {
           openByTurnId.set(turn.id, true);
-          continue;
+        } else if (!ended && turn.turnIsActive && !touchedByUser.has(turn.id)) {
+          openByTurnId.set(turn.id, true);
+        } else if (!ended && !turn.turnIsActive && !touchedByUser.has(turn.id)) {
+          openByTurnId.set(turn.id, false);
         }
-        // Keep live intermediate work behind one compact working row. The row still exposes the
-        // latest operation, elapsed time, and item count, while a reader can expand it explicitly
-        // when the detailed trace is useful. Completed and stale non-terminal turns use the same
-        // compact default so reconnecting an old rollout cannot flood the timeline with commands.
-        // Preserve an explicit open/closed choice across both transitions, including a reader who
-        // deliberately keeps a trace open for inspection.
-        if (!touchedByUser.has(turn.id)) openByTurnId.set(turn.id, false);
+        wasActiveByTurnId.set(turn.id, turn.turnIsActive);
       }
     },
     { immediate: true },

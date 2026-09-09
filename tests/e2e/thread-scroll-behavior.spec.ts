@@ -461,6 +461,9 @@ test("streaming output stays pinned when the user is already at the latest conte
   const pinnedIntermediateToggle = page.getByRole("button", {
     name: /Intermediate steps|中间过程/,
   });
+  await expect(pinnedIntermediateToggle).toHaveAttribute("data-state", "open");
+  await expect(page.getByTestId("intermediate-steps-working")).toBeVisible();
+  await pinnedIntermediateToggle.click();
   await expect(pinnedIntermediateToggle).toHaveAttribute("data-state", "closed");
   await pinnedIntermediateToggle.click();
   await expect(pinnedIntermediateToggle).toHaveAttribute("data-state", "open");
