@@ -1,5 +1,6 @@
 import type { GatewayEvent } from "~~/shared/types";
 import { gatewayDomainEvents } from "@/stores/gateway/domain-events";
+import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import type {
   RealtimeHandlers,
   RealtimeServerMessageHandlerContext,
@@ -34,6 +35,10 @@ function projectThreadRuntimeStatus(
   update: RealtimeServerMessageMap["thread.runtime.updated"]["update"],
 ) {
   gatewayDomainEvents.emit("thread-status-detected", update);
+  if (update.currentOperation !== undefined) {
+    const activity = useGatewayThreadActivityStore();
+    activity.updateCurrentOperation(update.hostId, update.threadId, update.currentOperation);
+  }
 }
 
 function handleThreadEvent(ctx: RealtimeServerMessageHandlerContext, event: GatewayEvent) {

@@ -62,20 +62,96 @@ class ThreadRuntimeEventBus {
 
   private publishRuntimeStatus(event: GatewayEvent) {
     const status = runtimeStatusFromEvent(event);
-    if (status === null) return;
+    const currentOperation = sidebarOperationFromEvent(event);
+    if (status === null && currentOperation === null) return;
     const params = recordFromUnknown(event.payload.params);
     const turn = recordFromUnknown(params?.turn);
     const turnId = idFromUnknown(turn?.id);
     threadRuntimeStatusHub.publish(currentUserId(), {
       hostId: event.hostId,
       threadId: event.threadId,
-      status,
+      status: status ?? "running",
       turnId: status === "running" && turnId !== null ? String(turnId) : null,
+      currentOperation,
     });
   }
 
   private key(userId: number, hostId: number, threadId: string) {
     return `${userId}:${hostId}:${threadId}`;
+  }
+}
+
+/**
+ * Keep background sidebar updates small and non-sensitive. Full transcript events remain scoped
+ * to an opened thread; only a stable action label is fanned out to the global runtime channel.
+ */
+function sidebarOperationFromEvent(event: GatewayEvent) {
+  switch (event.method) {
+    case "turn/started":
+      return "Working";
+    case "item/agentMessage/delta":
+      return "Writing a response";
+    case "item/plan/delta":
+    case "turn/plan/updated":
+      return "Planning the next steps";
+    case "item/reasoning/summaryTextDelta":
+    case "item/reasoning/textDelta":
+      return "Thinking through the change";
+    case "item/commandExecution/outputDelta":
+      return "Running a command";
+    case "item/fileChange/patchUpdated":
+      return "Updating files";
+    case "item/commandExecution/requestApproval":
+    case "item/fileChange/requestApproval":
+      return "Waiting approval";
+    case "item/started": {
+      const params = recordFromUnknown(event.payload.params);
+      const item = recordFromUnknown(params?.item);
+      return operationForItemType(item?.type);
+    }
+    case "thread/status/changed": {
+      return runtimeStatusFromEvent(event) === "running" ? "Working" : null;
+    }
+    default:
+      return null;
+  }
+}
+
+function operationForItemType(value: unknown) {
+  switch (value) {
+    case "commandExecution":
+      return "Running a command";
+    case "fileChange":
+      return "Updating files";
+    case "webSearch":
+      return "Searching the web";
+    case "agentMessage":
+      return "Writing a response";
+    case "reasoning":
+      return "Thinking through the change";
+    case "plan":
+    case "turnPlan":
+      return "Planning the next steps";
+    case "imageGeneration":
+      return "Generating an image";
+    case "mcpToolCall":
+    case "dynamicToolCall":
+      return "Using a tool";
+    case "subAgentActivity":
+    case "collabAgentToolCall":
+      return "Running sub-agents";
+    case "sleep":
+      return "Sleeping";
+    case "permissionsRequest":
+    case "serverRequest":
+    case "requestUserInput":
+      return "Waiting for input";
+    case "hookPrompt":
+      return "Running a hook";
+    case "contextCompaction":
+      return "Compacting context";
+    default:
+      return null;
   }
 }
 

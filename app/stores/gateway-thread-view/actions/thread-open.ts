@@ -116,7 +116,7 @@ export function createThreadOpenActions() {
       const currentOpen: PendingMainThreadOpen = {
         viewEpoch,
         activationSent: false,
-        retryCount: pendingOpen?.activationSent ? (pendingOpen.retryCount ?? 0) + 1 : 0,
+        retryCount: pendingOpen?.activationSent === true ? (pendingOpen.retryCount ?? 0) + 1 : 0,
       };
       pendingMainThreadOpens.set(openKey, currentOpen);
       let backgroundSync = false;

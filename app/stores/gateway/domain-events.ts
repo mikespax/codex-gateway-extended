@@ -87,6 +87,7 @@ export type GatewayDomainEventMap = {
     threadId: string;
     status: ThreadRuntimeStatus;
     turnId?: string | null;
+    currentOperation?: string | null;
   };
   "terminal-process-detected": {
     hostId: number;
