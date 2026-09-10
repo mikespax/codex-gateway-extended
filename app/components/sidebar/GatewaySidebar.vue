@@ -53,6 +53,7 @@ import type { ThreadMoveResult, ThreadNativeMigrationResult } from "~~/shared/ty
 
 const PINNED_GROUPS_KEY = "codex-gateway-pinned-groups";
 const SIDEBAR_SECTIONS_KEY = "codex-gateway-sidebar-sections";
+const SIDEBAR_SECTIONS_VERSION = 2;
 
 type ThreadMoveSourceInput = {
   hostId: number;
@@ -133,10 +134,10 @@ const activePinnedThreads = computed(() =>
 const sidebarActivityTargets = computed(() => {
   const seen = new Set<string>();
   const result: SidebarActivityTarget[] = [];
-  const visibleThreads = recentChatsExpanded.value
-    ? [...pinnedThreads.value, ...recentThreads.value]
-    : pinnedThreads.value;
-  for (const thread of visibleThreads) {
+  // Recent is an index, not a second live-monitoring surface. Its rows are populated from the
+  // bounded catalog and only load turns/storage/summaries when the user opens one. Active and
+  // Inactive pins remain the continuously refreshed operational view.
+  for (const thread of pinnedThreads.value) {
     const threadId = String(thread.threadId);
     const key = `${thread.hostId}:${threadId}`;
     if (seen.has(key)) continue;
@@ -220,6 +221,7 @@ function persistSidebarSections() {
   localStorage.setItem(
     SIDEBAR_SECTIONS_KEY,
     JSON.stringify({
+      version: SIDEBAR_SECTIONS_VERSION,
       activePinnedExpanded: activePinnedExpanded.value,
       inactivePinnedExpanded: inactivePinnedExpanded.value,
       recentChatsExpanded: recentChatsExpanded.value,
@@ -386,9 +388,20 @@ onMounted(() => {
         activePinnedExpanded.value = sections.activePinnedExpanded;
       if (typeof sections.inactivePinnedExpanded === "boolean")
         inactivePinnedExpanded.value = sections.inactivePinnedExpanded;
-      if (typeof sections.recentChatsExpanded === "boolean")
+      if (
+        sections.version === SIDEBAR_SECTIONS_VERSION &&
+        typeof sections.recentChatsExpanded === "boolean"
+      )
         recentChatsExpanded.value = sections.recentChatsExpanded;
       if (typeof sections.hostsExpanded === "boolean") hostsExpanded.value = sections.hostsExpanded;
+
+      // Older versions persisted Recent as expanded, which caused a full remote catalog scan
+      // during bootstrap. Keep the other layout preferences, but make the new lazy behavior the
+      // durable default once per browser profile. The user can still expand Recent explicitly.
+      if (sections.version !== SIDEBAR_SECTIONS_VERSION) {
+        recentChatsExpanded.value = false;
+        persistSidebarSections();
+      }
     }
     if (pinnedThreads.value.length > 0) void migrateLegacyPinnedGroups();
   } catch {
