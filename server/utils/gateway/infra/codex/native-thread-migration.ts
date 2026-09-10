@@ -600,6 +600,7 @@ export class NativeThreadMigrationService {
       if (
         targetRootRead.thread.id !== input.sourceThreadId ||
         targetRootRead.thread.path !== targetThreads[0]?.targetPath ||
+        targetRootRead.thread.cwd !== targetCwd ||
         targetRootRead.thread.historyMode !== sourceThreads[0]?.historyMode ||
         targetRootTurns.length !== sourceThreads[0]?.turnCount ||
         targetRootTurns.length === 0

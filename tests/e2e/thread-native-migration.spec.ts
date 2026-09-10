@@ -120,6 +120,7 @@ test("migrates one real persisted Codex thread with the exact ID", async ({
     expect(result.source.turnCount).toBe(result.target.turnCount);
     expect(result.source.historyMode).toBe(result.target.historyMode);
     expect(result.target.requestedCwd).toBe(targetPath);
+    expect(result.target.cwd).toBe(targetPath);
     expect(result.verification.historyParity).toBe(true);
 
     const sourceListing = await authenticatedFetch(
