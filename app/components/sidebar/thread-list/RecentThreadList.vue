@@ -21,6 +21,7 @@ const props = defineProps<{
   longPressHandlers?: Record<string, unknown>;
   resourceUsageForHost?: (hostId: number) => string | null;
   expanded: boolean;
+  loading?: boolean;
   moveHostLabel?: string;
 }>();
 
@@ -40,6 +41,7 @@ function subtitle(thread: RecentThread) {
 <template>
   <section class="flex min-w-0 max-w-full flex-col overflow-hidden">
     <button
+      data-testid="recent-chats-toggle"
       class="flex h-8 w-full items-center justify-between gap-2 rounded px-2 pb-2 text-left text-sm text-ink-muted hover:bg-surface"
       :aria-expanded="props.expanded"
       @click="emit('toggle')"
@@ -89,6 +91,9 @@ function subtitle(thread: RecentThread) {
         @move-host="emit('moveHost', thread)"
         @rename="emit('rename', thread)"
       />
+    </div>
+    <div v-else-if="props.expanded && props.loading" class="px-2 text-xs text-ink-faint">
+      {{ $t("app.loadingGateway") }}
     </div>
     <div v-else-if="props.expanded" class="px-2 text-xs text-ink-faint">
       {{ $t("app.noRecentChats") }}

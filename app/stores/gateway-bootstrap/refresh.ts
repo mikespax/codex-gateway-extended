@@ -3,6 +3,7 @@ import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayConfigStore } from "@/stores/gateway-config";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayRealtimeStore } from "@/stores/gateway-realtime";
+import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { messageFromError } from "@/stores/gateway/thread-utils/identity";
 import {
@@ -104,18 +105,18 @@ export async function refreshGatewayClient() {
 async function hydrateNavigationData(sessionEpoch: number) {
   const auth = useAuthStore();
   const catalog = useGatewayCatalogStore();
-  const navigation = useGatewayNavigationStore();
+  const config = useGatewayConfigStore();
+  const activity = useGatewayThreadActivityStore();
   const anchor = navigationHydrationAnchor();
   const canContinue = () =>
     auth.isCurrentSession(sessionEpoch) && canContinueNavigationHydration(anchor);
-  await navigation.connectAllHosts();
+  // The server-owned pin projection is enough to render Active and Inactive. Do not enumerate
+  // every host's remote thread catalog during page bootstrap; Recent chats and project trees load
+  // their bounded catalogs only after the user opens those sections.
+  activity.ingestPinnedThreads(config.gatewayConfig.pinnedThreads, catalog.projects);
+  catalog.ensureSelectedProject();
   if (!canContinue()) return;
   await catalog.listModels();
-  if (!canContinue()) return;
-  await navigation.listThreads();
-  if (!canContinue()) return;
-  if (navigation.selectedProjectId === null) catalog.ensureSelectedProject();
-  if (canContinue() && navigation.selectedProjectId !== null) await navigation.listThreads();
 }
 
 function hydrateNavigationDataInBackground(sessionEpoch: number) {

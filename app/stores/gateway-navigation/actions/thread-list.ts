@@ -62,31 +62,34 @@ export function createThreadListActions() {
     return true;
   }
 
+  /** Load the bounded cross-host catalog only after the user asks to see Recent chats. */
+  async function loadRecentThreads() {
+    const catalog = useGatewayCatalogStore();
+    const config = useGatewayConfigStore();
+    const bootstrap = useGatewayBootstrapStore();
+    const sessionIsCurrent = captureSessionEpoch();
+    await Promise.all(
+      catalog.hosts.map(async (host) => {
+        catalog.setHostConnectionStatus(host.id, "connecting");
+        try {
+          if (!(await loadHostOverview(host.id)) || !sessionIsCurrent()) return;
+          catalog.setHostConnectionStatus(host.id, "connected");
+        } catch (error: unknown) {
+          if (!sessionIsCurrent()) return;
+          catalog.setHostConnectionStatus(
+            host.id,
+            "failed",
+            messageFromError(error, bootstrap.t("app.connectHostFailed"), bootstrap.errorLabels),
+          );
+        }
+      }),
+    );
+    if (sessionIsCurrent()) config.setCatalog(catalog.hosts, catalog.projects);
+  }
+
   return {
-    async connectAllHosts() {
-      const catalog = useGatewayCatalogStore();
-      const config = useGatewayConfigStore();
-      const bootstrap = useGatewayBootstrapStore();
-      const sessionIsCurrent = captureSessionEpoch();
-      await Promise.all(
-        catalog.hosts.map(async (host) => {
-          catalog.setHostConnectionStatus(host.id, "connecting");
-          try {
-            if (!(await loadHostOverview(host.id)) || !sessionIsCurrent()) return;
-            catalog.setHostConnectionStatus(host.id, "connected");
-          } catch (error: unknown) {
-            if (!sessionIsCurrent()) return;
-            catalog.setHostConnectionStatus(
-              host.id,
-              "failed",
-              messageFromError(error, bootstrap.t("app.connectHostFailed"), bootstrap.errorLabels),
-            );
-          }
-        }),
-      );
-      if (!sessionIsCurrent()) return;
-      config.setCatalog(catalog.hosts, catalog.projects);
-    },
+    connectAllHosts: loadRecentThreads,
+    loadRecentThreads,
     refreshHostProjects: loadHostOverview,
     async listThreads(searchTerm = "") {
       const catalog = useGatewayCatalogStore();

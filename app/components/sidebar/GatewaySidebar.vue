@@ -118,7 +118,9 @@ const errorLabels = computed(() => errorMessageLabels(t));
 const inactivePinnedKeys = ref<Record<string, boolean>>({});
 const activePinnedExpanded = ref(true);
 const inactivePinnedExpanded = ref(false);
-const recentChatsExpanded = ref(true);
+const recentChatsExpanded = ref(false);
+const recentThreadsLoading = ref(false);
+const recentThreadsLoaded = ref(false);
 const hostsExpanded = ref(true);
 let migratingLegacyPinnedGroups = false;
 const inactivePinnedThreads = computed(() =>
@@ -131,7 +133,10 @@ const activePinnedThreads = computed(() =>
 const sidebarActivityTargets = computed(() => {
   const seen = new Set<string>();
   const result: SidebarActivityTarget[] = [];
-  for (const thread of [...pinnedThreads.value, ...recentThreads.value]) {
+  const visibleThreads = recentChatsExpanded.value
+    ? [...pinnedThreads.value, ...recentThreads.value]
+    : pinnedThreads.value;
+  for (const thread of visibleThreads) {
     const threadId = String(thread.threadId);
     const key = `${thread.hostId}:${threadId}`;
     if (seen.has(key)) continue;
@@ -142,6 +147,41 @@ const sidebarActivityTargets = computed(() => {
   return result;
 });
 useSidebarActivityRefresh(sidebarActivityTargets);
+
+watch(
+  [() => config.gatewayConfig.pinnedThreads, () => catalog.projects],
+  ([threads]) => {
+    threadActivity.ingestPinnedThreads(threads, catalog.projects);
+  },
+  { deep: true, immediate: true },
+);
+
+async function loadRecentThreads() {
+  if (recentThreadsLoaded.value || recentThreadsLoading.value || hosts.value.length === 0) {
+    return;
+  }
+  recentThreadsLoading.value = true;
+  try {
+    await navigation.loadRecentThreads();
+    recentThreadsLoaded.value = true;
+  } finally {
+    recentThreadsLoading.value = false;
+  }
+}
+
+function toggleRecentChats() {
+  recentChatsExpanded.value = !recentChatsExpanded.value;
+  persistSidebarSections();
+  if (recentChatsExpanded.value) void loadRecentThreads();
+}
+
+watch(
+  [recentChatsExpanded, () => hosts.value.length],
+  ([expanded]) => {
+    if (expanded) void loadRecentThreads();
+  },
+  { immediate: true },
+);
 const hostTreeController = computed<HostTreeController>(() => ({
   hosts: sidebarTree.hosts.value,
   availableProjectsByHost: sidebarTree.availableProjectsByHost.value,
@@ -594,15 +634,13 @@ function closeNewThread(open: boolean) {
             :long-press-handlers="longPressContextMenuHandlers"
             :resource-usage-for-host="usageForHost"
             :expanded="recentChatsExpanded"
+            :loading="recentThreadsLoading"
             :move-host-label="hosts.length > 1 ? t('app.moveThreadToHost') : undefined"
             @open="recentActivity.openRecentThread"
             @pin="recentActivity.pinRecentThread"
             @rename="threadRename.startRename"
             @move-host="requestThreadMove"
-            @toggle="
-              recentChatsExpanded = !recentChatsExpanded;
-              persistSidebarSections();
-            "
+            @toggle="toggleRecentChats"
           />
 
           <section class="flex min-w-0 max-w-full flex-col overflow-hidden">

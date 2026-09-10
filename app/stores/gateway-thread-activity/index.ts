@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import type {
   AppServerThread,
   GatewayThread,
+  PinnedThreadRecord,
   ProjectRecord,
   ThreadHistoryTurn,
   ThreadGoalStatus,
@@ -83,6 +84,34 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
   function ingestGatewayThreads(threads: GatewayThread[], projects: ProjectRecord[]) {
     for (const thread of threads) {
       upsertGatewayThread(thread, projects);
+    }
+  }
+
+  /** Seed sidebar rows from the server-owned pin projection without listing remote threads. */
+  function ingestPinnedThreads(threads: PinnedThreadRecord[], projects: ProjectRecord[]) {
+    for (const thread of threads) {
+      const existing = summariesByKey.value[pinnedKey(thread.hostId, thread.threadId)];
+      const project = projects.find(
+        (candidate) =>
+          candidate.hostId === thread.hostId &&
+          (candidate.id === thread.projectId || candidate.remotePath === thread.subtitle),
+      );
+      upsertSummary({
+        hostId: thread.hostId,
+        projectId: thread.projectId ?? project?.id ?? null,
+        threadId: thread.threadId,
+        title: firstNonEmptyString([thread.title, thread.projectName]) ?? thread.threadId,
+        path: null,
+        cwd: stringOrNull(thread.subtitle) ?? project?.remotePath ?? null,
+        projectName: thread.projectName ?? project?.name ?? null,
+        parentThreadId: null,
+        agentNickname: null,
+        agentRole: null,
+        isSubAgent: false,
+        // A config refresh may carry an older pin timestamp than a realtime summary already in
+        // memory. Never make a pinned row look less recent during that merge.
+        updatedAt: Math.max(existing?.updatedAt ?? 0, thread.updatedAt ?? 0),
+      });
     }
   }
 
@@ -327,6 +356,7 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
     summariesByKey,
     observedRunningThreadKeys,
     ingestGatewayThreads,
+    ingestPinnedThreads,
     ingestMetadata,
     upsertGatewayThread,
     upsertAppServerThread,
