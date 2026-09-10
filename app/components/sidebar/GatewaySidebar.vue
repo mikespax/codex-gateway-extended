@@ -15,13 +15,19 @@ import BrowserOpenDialog from "@/components/browser/BrowserOpenDialog.vue";
 import { useLongPressContextMenu } from "@/composables/interactions/useLongPressContextMenu";
 import { useWorkspaceLaunchActions } from "@/composables/workspace/useWorkspaceLaunchActions";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
+import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayConfigStore } from "@/stores/gateway-config";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import AddProjectDialog from "./AddProjectDialog.vue";
+import NewThreadDialog from "./NewThreadDialog.vue";
 import HostTree from "./host-tree/HostTree.vue";
 import PinnedThreadList from "./thread-list/PinnedThreadList.vue";
 import RecentThreadList from "./thread-list/RecentThreadList.vue";
+import {
+  useSidebarActivityRefresh,
+  type SidebarActivityTarget,
+} from "./thread-list/useSidebarActivityRefresh";
 import ThreadRenameDialog from "./thread-list/ThreadRenameDialog.vue";
 import ThreadMoveDialog from "./thread-list/ThreadMoveDialog.vue";
 import SidebarScrollArea from "./SidebarScrollArea.vue";
@@ -68,6 +74,7 @@ type ThreadMoveSource = {
 };
 
 const catalog = useGatewayCatalogStore();
+const bootstrap = useGatewayBootstrapStore();
 const threadActivity = useGatewayThreadActivityStore();
 const config = useGatewayConfigStore();
 const navigation = useGatewayNavigationStore();
@@ -80,6 +87,9 @@ const projectEditor = ref<{ host: HostRecord; project: ProjectRecord | null } | 
 const threadMove = ref<ThreadMoveSource | null>(null);
 const threadMoveSubmitting = ref(false);
 const threadMoveError = ref("");
+const newThreadHostId = ref<number | null>(null);
+const newThreadName = ref("");
+const newThreadSubmitting = ref(false);
 const { longPressTriggered, longPressContextMenuHandlers } = useLongPressContextMenu();
 const sidebarTree = useSidebarTree(longPressTriggered);
 const threadRename = useThreadRename();
@@ -100,6 +110,9 @@ const { recentThreads } = recentActivity;
 const { summariesByKey } = storeToRefs(threadActivity);
 const { selectedHostTitle, canLaunch } = workspaceActions;
 const { usageForHost } = useSidebarHostMetrics(hosts);
+const newThreadHost = computed(
+  () => hosts.value.find((host) => host.id === newThreadHostId.value) ?? null,
+);
 const { activeCount: tmuxActiveCount } = tmuxLauncher;
 const errorLabels = computed(() => errorMessageLabels(t));
 const inactivePinnedKeys = ref<Record<string, boolean>>({});
@@ -114,6 +127,21 @@ const inactivePinnedThreads = computed(() =>
 const activePinnedThreads = computed(() =>
   pinnedThreads.value.filter((thread) => !isInactivePinnedThread(thread)),
 );
+
+const sidebarActivityTargets = computed(() => {
+  const seen = new Set<string>();
+  const result: SidebarActivityTarget[] = [];
+  for (const thread of [...pinnedThreads.value, ...recentThreads.value]) {
+    const threadId = String(thread.threadId);
+    const key = `${thread.hostId}:${threadId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const summary = threadActivity.summariesByKey[key];
+    result.push({ hostId: thread.hostId, threadId, path: summary?.path ?? null });
+  }
+  return result;
+});
+useSidebarActivityRefresh(sidebarActivityTargets);
 const hostTreeController = computed<HostTreeController>(() => ({
   hosts: sidebarTree.hosts.value,
   availableProjectsByHost: sidebarTree.availableProjectsByHost.value,
@@ -141,6 +169,8 @@ const hostTreeController = computed<HostTreeController>(() => ({
   rename: threadRename.startRename,
   threadRuntimeStatus: sidebarTree.threadRuntimeStatus,
   threadCompletionAttention: sidebarTree.threadCompletionAttention,
+  threadActivityOverview: sidebarTree.threadActivityOverview,
+  threadStorageBytes: sidebarTree.threadStorageBytes,
   hostResourceUsage: usageForHost,
   canMoveThreadToHost: hosts.value.length > 1,
   moveThread: requestThreadMove,
@@ -384,7 +414,16 @@ async function openHostMonitor(hostId: number) {
   workspaceActions.openHostMonitor();
 }
 
-function startNewThread(hostId: number) {
+function requestNewThread(hostId: number) {
+  newThreadName.value = "";
+  newThreadHostId.value = hostId;
+}
+
+async function submitNewThread() {
+  const hostId = newThreadHostId.value;
+  const name = newThreadName.value.trim();
+  if (hostId === null || name === "" || newThreadSubmitting.value) return;
+
   const project = selectNewThreadProject({
     hostId,
     selectedHostId: selectedHostId.value,
@@ -392,7 +431,50 @@ function startNewThread(hostId: number) {
     projects: catalog.projects,
     activity: Object.values(summariesByKey.value),
   });
-  void threadView.startThread({}, { hostId, projectId: project?.id ?? null });
+  newThreadSubmitting.value = true;
+  try {
+    const threadId = await threadView.startThread({}, { hostId, projectId: project?.id ?? null });
+    if (threadId === null) return;
+
+    const pinnedThread: PinnedThreadRecord = {
+      hostId,
+      projectId: project?.id ?? null,
+      threadId,
+      title: name,
+      subtitle: project?.remotePath ?? null,
+      projectName: project?.name ?? null,
+      updatedAt: Math.floor(Date.now() / 1000),
+    };
+    let renameError: unknown = null;
+    try {
+      await navigation.renameThread(hostId, threadId, name);
+    } catch (error) {
+      renameError = error;
+    }
+    await config.setPinnedThread(pinnedThread, true);
+    if (renameError !== null) {
+      bootstrap.setError(
+        messageFromError(renameError, t("app.renameThreadFailed"), errorLabels.value),
+        { hostId, projectId: project?.id ?? null, threadId },
+      );
+    }
+    newThreadHostId.value = null;
+    newThreadName.value = "";
+  } catch (error: unknown) {
+    bootstrap.setError(messageFromError(error, t("app.createThreadFailed"), errorLabels.value), {
+      hostId,
+      projectId: project?.id ?? null,
+    });
+  } finally {
+    newThreadSubmitting.value = false;
+  }
+}
+
+function closeNewThread(open: boolean) {
+  if (!open && !newThreadSubmitting.value) {
+    newThreadHostId.value = null;
+    newThreadName.value = "";
+  }
 }
 </script>
 
@@ -420,7 +502,7 @@ function startNewThread(hostId: number) {
       @open-terminal="workspaceActions.openTerminal"
       @open-browser="showBrowserDialog = true"
       @open-host-monitor="workspaceActions.openHostMonitor"
-      @new-thread="startNewThread"
+      @new-thread="requestNewThread"
     />
     <div class="flex min-h-0 flex-1 overflow-hidden px-3 py-3">
       <SidebarScrollArea>
@@ -583,6 +665,15 @@ function startNewThread(hostId: number) {
       :host="projectEditor?.host ?? null"
       :project="projectEditor?.project ?? null"
       @update:open="projectEditor = $event ? projectEditor : null"
+    />
+
+    <NewThreadDialog
+      :open="newThreadHostId !== null"
+      :host-name="newThreadHost?.name || newThreadHost?.sshHost || ''"
+      v-model="newThreadName"
+      :submitting="newThreadSubmitting"
+      @update:open="closeNewThread"
+      @submit="submitNewThread"
     />
 
     <!-- Rename is a single modal workflow for desktop context-click and mobile long-press. Keep

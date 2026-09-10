@@ -9,7 +9,7 @@ function script(includeGpuProcesses: boolean) {
 set -u
 export LC_ALL=C
 if [ "$(uname -s 2>/dev/null || printf unknown)" = "Darwin" ]; then
-  if ! command -v sysctl >/dev/null 2>&1 || ! command -v vm_stat >/dev/null 2>&1 || ! command -v top >/dev/null 2>&1 || ! command -v awk >/dev/null 2>&1 || ! command -v tr >/dev/null 2>&1; then
+  if ! command -v sysctl >/dev/null 2>&1 || ! command -v vm_stat >/dev/null 2>&1 || ! command -v top >/dev/null 2>&1 || ! command -v awk >/dev/null 2>&1 || ! command -v tr >/dev/null 2>&1 || ! command -v df >/dev/null 2>&1; then
     printf '@@UNSUPPORTED\n'
     exit 0
   fi
@@ -50,6 +50,14 @@ if [ "$(uname -s 2>/dev/null || printf unknown)" = "Darwin" ]; then
   printf '@@BLOCK\n'
   printf '@@DISK\n'
   printf '@@FS\n'
+  # macOS df does not expose a filesystem-type column, while the shared parser
+  # intentionally accepts a normalized device/type/size shape. Keep the root
+  # data filesystem here so sidebar HDD utilization reflects the APFS container,
+  # not the nearly-empty sealed system volume.
+  printf 'Filesystem Type 1024-blocks Used Available Capacity Mounted on\n'
+  mac_data_mount="/System/Volumes/Data"
+  [ -d "$mac_data_mount" ] || mac_data_mount="/"
+  df -Pk "$mac_data_mount" 2>/dev/null | awk 'NR == 2 { print $1, "apfs", $2, $3, $4, $5, $6 }'
   printf '@@GPU\n'
 ${includeGpuProcesses ? gpuProcessScript() : ""}
   printf '@@END\n'

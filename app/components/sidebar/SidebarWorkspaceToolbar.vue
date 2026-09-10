@@ -2,6 +2,7 @@
 import {
   ActivityIcon,
   ChartNoAxesCombinedIcon,
+  GaugeIcon,
   GlobeIcon,
   PlusIcon,
   TerminalIcon,
@@ -64,6 +65,18 @@ const emit = defineEmits<{
       @click="emit('openHostMonitor')"
     >
       <ChartNoAxesCombinedIcon class="size-4" />
+    </Button>
+    <Button
+      as-child
+      variant="ghost"
+      size="icon"
+      class="size-8 shrink-0"
+      :title="$t('usage.openDashboard')"
+      :aria-label="$t('usage.openDashboard')"
+    >
+      <NuxtLink to="/usage">
+        <GaugeIcon class="size-4" />
+      </NuxtLink>
     </Button>
     <Button
       data-testid="open-terminal-button"

@@ -251,9 +251,11 @@ codex_gateway_socket_has_listener() {
     awk -v socket="$socket" '$NF == socket && $4 == "00010000" { found = 1 } END { exit found ? 0 : 1 }' /proc/net/unix
     return $?
   fi
-  if [ "$(uname -s 2>/dev/null || true)" = "Darwin" ] && command -v lsof >/dev/null 2>&1; then
-    lsof -nP -a -U -Fn -- "$socket" 2>/dev/null | grep -q '^p'
-    return $?
+  if [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]; then
+    # macOS lsof can block indefinitely while probing a busy Codex Unix socket. The proxy
+    # performs its own connection handshake, so a present socket is the only safe bounded
+    # preflight here; a stale socket will fail through the normal proxy retry path.
+    return 0
   fi
   return 0
 }

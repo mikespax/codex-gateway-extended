@@ -1,4 +1,5 @@
 import type { GatewayEvent, HostRecord, RealtimeClientMessage } from "~~/shared/types";
+import { MAX_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { requireRecord } from "../../http/validation/common";
 import { threadOpenSchema, threadStartSchema } from "../../http/validation/threads";
 import { threadBroker } from "../../runtime/broker";
@@ -41,7 +42,13 @@ export async function activateThread(
   peer: RealtimePeer,
   message: Extract<RealtimeClientMessage, { type: "thread.activate" }>,
 ) {
-  const input = threadOpenSchema.parse(message);
+  // Older browser tabs can retain more than the app-server page maximum. Cap the
+  // compatibility input before strict validation so one stale tab cannot repeatedly
+  // fail activation while other chats are being used.
+  const input = threadOpenSchema.parse({
+    ...message,
+    limit: message.limit === undefined ? undefined : Math.min(message.limit, MAX_TURN_PAGE_LIMIT),
+  });
 
   const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
   // Capture the replay cursor before reading the snapshot. Events emitted while thread/read is in
@@ -206,6 +213,13 @@ function subscribeThreadEvents(
       return;
     }
     if (event.id <= sentThroughId) return;
+    // Turn-usage projections are retained for the dashboard ledger, not part of the thread UI
+    // protocol. Skip legacy records as well as future records so reconnects cannot resurrect the
+    // removed end-of-turn footer.
+    if (event.method === "gateway/usage/turn") {
+      sentThroughId = event.id;
+      return;
+    }
     // Gateway event ids are monotonic within a user's in-memory event store. A high-water cursor
     // provides the same replay/live de-duplication as an ever-growing Set without retaining one
     // allocation for every token emitted during a long-running turn.

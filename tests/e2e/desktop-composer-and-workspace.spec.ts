@@ -18,6 +18,7 @@ test("focuses the desktop composer, sends with Enter, and keeps Shift+Enter mult
   });
 
   const composer = page.getByTestId("composer-input");
+  await expect(page.getByTestId("gateway-build-version")).toHaveText("Gateway unknown");
   await expect(composer).toBeFocused();
   await composer.fill("First desktop line");
   await composer.press("Shift+Enter");
@@ -29,6 +30,30 @@ test("focuses the desktop composer, sends with Enter, and keeps Shift+Enter mult
   await expect.poll(() => deferredRealtimeTurnStartRequests(page)).toHaveLength(1);
   expect(deferredRealtimeTurnStartRequests(page)[0]?.text).toBe(
     "First desktop line\nSecond desktop line",
+  );
+});
+
+test("desktop Enter still sends after the browser window is resized narrow", async ({ page }) => {
+  await openApp(page);
+  const threadId = "desktop-narrow-enter-send";
+  await seedGatewayThread(page, {
+    projectId: 1,
+    threadId,
+    currentThread: { id: threadId, name: "Desktop Narrow Enter Send" },
+  });
+
+  // A desktop browser can be narrower than the responsive mobile layout breakpoint. The
+  // keyboard contract must follow the device, not this temporary window size.
+  await page.setViewportSize({ width: 700, height: 900 });
+  const composer = page.getByTestId("composer-input");
+  await expect(composer).toBeFocused();
+  await composer.fill("Send from a narrow desktop window");
+  installDeferredRealtimeTurnStartRoute(page, { id: "desktop-narrow-enter-turn" });
+  await composer.press("Enter");
+
+  await expect.poll(() => deferredRealtimeTurnStartRequests(page)).toHaveLength(1);
+  expect(deferredRealtimeTurnStartRequests(page)[0]?.text).toBe(
+    "Send from a narrow desktop window",
   );
 });
 

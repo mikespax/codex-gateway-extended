@@ -41,6 +41,7 @@ const emit = defineEmits<{
     :host-id="hostId"
     :thread-id="threadId"
     :user-message-variant="props.row.userMessageVariant"
+    :show-inline-images="props.row.showInlineImages"
     :turn-timing="props.row.turnTiming"
     :agent-actions-available="props.row.agentActionsAvailable"
     :sent-at="props.row.sentAt"
@@ -51,5 +52,7 @@ const emit = defineEmits<{
     :started-at="props.row.startedAt"
     :latest-operation="props.row.latestOperation"
   />
-  <TurnDurationLabel v-else :timing="props.row" />
+  <div v-else class="flex items-center gap-3 py-1">
+    <TurnDurationLabel :timing="props.row" />
+  </div>
 </template>

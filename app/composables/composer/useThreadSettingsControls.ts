@@ -99,7 +99,8 @@ export function useThreadSettingsControls() {
   );
   const activeModelLabel = computed(() => {
     const model = activeModelRecord.value;
-    return firstNonEmptyString([model?.displayName, model?.model, activeModel.value]) ?? "模型";
+    const rawLabel = firstNonEmptyString([model?.model, model?.displayName, activeModel.value]);
+    return compactModelLabel(rawLabel) ?? "模型";
   });
   const activeEffortValue = computed(() => {
     if (selectedEffort.value !== "default") return selectedEffort.value;
@@ -159,8 +160,8 @@ export function useThreadSettingsControls() {
       light: "Light",
       medium: "Medium",
       high: "High",
-      "extra-high": "Extra High",
-      xhigh: "Extra High",
+      "extra-high": "XH",
+      xhigh: "XH",
     };
     const knownLabel = knownLabels[normalized];
     if (knownLabel !== undefined) return knownLabel;
@@ -169,6 +170,15 @@ export function useThreadSettingsControls() {
       .filter((part) => part !== "")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(" ");
+  }
+
+  function compactModelLabel(value: string | null) {
+    if (value === null || value === "") return null;
+    const normalized = value.toLowerCase().replaceAll("_", "-");
+    if (normalized.includes("luna")) return "Luna";
+    if (normalized.includes("terra")) return "Terra";
+    if (normalized.includes("astra")) return "Astra";
+    return value;
   }
 
   function labelEffortOption(option: { value: ReasoningEffort; label?: string }) {

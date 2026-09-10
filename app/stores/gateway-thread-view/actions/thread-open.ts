@@ -1,5 +1,5 @@
 import type { ComposerTurnOptions, ThreadHistoryState } from "~~/shared/types";
-import { INITIAL_TURN_PAGE_LIMIT } from "~~/shared/config";
+import { INITIAL_TURN_PAGE_LIMIT, MAX_TURN_PAGE_LIMIT } from "~~/shared/config";
 import { threadTurnsFromHistory } from "~~/shared/thread-history/shape";
 import { useGatewayCatalogStore } from "@/stores/gateway-catalog";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
@@ -34,6 +34,15 @@ import { clearThreadCompletionAttention } from "@/stores/gateway/thread-runtime/
 import { captureSessionEpoch } from "@/utils/session-epoch";
 
 const previewLoadTokens = new Map<string, symbol>();
+interface PendingMainThreadOpen {
+  viewEpoch: number;
+  activationSent: boolean;
+  retryCount: number;
+  promise?: Promise<void>;
+}
+
+const pendingMainThreadOpens = new Map<string, PendingMainThreadOpen>();
+const AUTHORITATIVE_VIEW_MAX_AGE_MS = 5 * 60_000;
 interface EventGapRecovery {
   promise: Promise<void>;
   sessionIsCurrent: () => boolean;
@@ -77,7 +86,10 @@ export function createThreadOpenActions() {
         navigation.selectedHostId === targetHostId &&
         navigation.selectedThreadId === threadId &&
         views.currentThread !== null &&
-        views.history !== null
+        views.history !== null &&
+        views.authoritative &&
+        (views.authoritativeAt === 0 ||
+          Date.now() - views.authoritativeAt < AUTHORITATIVE_VIEW_MAX_AGE_MS)
       ) {
         void gateway.ensureSelectedHostModels();
         finishThreadSelection(threadId, context?.replaceRoute);
@@ -85,71 +97,110 @@ export function createThreadOpenActions() {
         requestScrollToLatest();
         return;
       }
+      const openKey = pinnedKey(targetHostId, threadId);
+      const pendingOpen = pendingMainThreadOpens.get(openKey);
+      if (
+        pendingOpen !== undefined &&
+        navigation.selectedHostId === targetHostId &&
+        navigation.selectedThreadId === threadId &&
+        isCurrentViewTransition(pendingOpen.viewEpoch)
+      ) {
+        // Repeated clicks must not enqueue an activation before the first request leaves the
+        // browser. Once a request is visibly stalled, allow one explicit retry; later clicks
+        // join that retry instead of creating an activation storm.
+        if (!pendingOpen.activationSent || pendingOpen.retryCount > 0) {
+          return pendingOpen.promise;
+        }
+      }
       const viewEpoch = beginViewTransition();
+      const currentOpen: PendingMainThreadOpen = {
+        viewEpoch,
+        activationSent: false,
+        retryCount: pendingOpen?.activationSent === true ? (pendingOpen.retryCount ?? 0) + 1 : 0,
+      };
+      pendingMainThreadOpens.set(openKey, currentOpen);
+      let backgroundSync = false;
       if (gateway.modelsHostId !== targetHostId) {
         gateway.models = [];
         gateway.modelsHostId = null;
       }
-      activatePendingThreadView(targetHostId, targetProjectId, threadId);
-      void gateway.ensureSelectedHostModels();
-      if (restoreThreadView(targetHostId, threadId)) {
-        const cachedTurnLimit = Math.max(
-          INITIAL_TURN_PAGE_LIMIT,
-          threadTurnsFromHistory(views.history).length,
-        );
-        finishThreadSelection(threadId, context?.replaceRoute);
-        void refreshGoalAfterOpen(targetHostId, threadId);
-        requestScrollToLatest();
-        void syncOpenThreadFromServer({
+      try {
+        activatePendingThreadView(targetHostId, targetProjectId, threadId);
+        void gateway.ensureSelectedHostModels();
+        if (restoreThreadView(targetHostId, threadId)) {
+          const cachedTurnLimit = retainedTurnLimit(views.history);
+          finishThreadSelection(threadId, context?.replaceRoute);
+          void refreshGoalAfterOpen(targetHostId, threadId);
+          requestScrollToLatest();
+          currentOpen.activationSent = true;
+          const syncPromise = syncOpenThreadFromServer({
+            hostId: targetHostId,
+            projectId: targetProjectId,
+            threadId,
+            viewEpoch,
+            replaceRoute: context?.replaceRoute,
+            showLoading: false,
+            scrollToLatest: false,
+            limit: cachedTurnLimit,
+          });
+          currentOpen.promise = syncPromise;
+          backgroundSync = true;
+          void syncPromise.then(clearPendingMainThreadOpen, clearPendingMainThreadOpen);
+          return;
+        }
+        const sessionIsCurrent = captureSessionEpoch();
+        const persistentView = await readPersistentThreadView(targetHostId, threadId);
+        if (
+          persistentView !== null &&
+          sessionIsCurrent() &&
+          isCurrentViewTransition(viewEpoch) &&
+          navigation.selectedHostId === targetHostId &&
+          navigation.selectedThreadId === threadId
+        ) {
+          // Hydrate the old browser snapshot without extending its TTL. If the live activation is
+          // unavailable, the same stale record must not be refreshed indefinitely as if it were new.
+          upsertThreadView(persistentView, { persist: false });
+          restoreThreadView(targetHostId, threadId);
+          const cachedTurnLimit = retainedTurnLimit(persistentView.history);
+          rememberOpenThread(threadId);
+          syncSelectedRoute({ replace: context?.replaceRoute });
+          requestScrollToLatest();
+          currentOpen.activationSent = true;
+          const syncPromise = syncOpenThreadFromServer({
+            hostId: targetHostId,
+            projectId: persistentView.projectId ?? targetProjectId,
+            threadId,
+            viewEpoch,
+            replaceRoute: context?.replaceRoute,
+            showLoading: false,
+            scrollToLatest: false,
+            limit: cachedTurnLimit,
+          });
+          currentOpen.promise = syncPromise;
+          backgroundSync = true;
+          void syncPromise.then(clearPendingMainThreadOpen, clearPendingMainThreadOpen);
+          return;
+        }
+        currentOpen.activationSent = true;
+        const syncPromise = syncOpenThreadFromServer({
           hostId: targetHostId,
           projectId: targetProjectId,
           threadId,
           viewEpoch,
           replaceRoute: context?.replaceRoute,
-          showLoading: false,
-          scrollToLatest: false,
-          limit: cachedTurnLimit,
+          showLoading: true,
         });
-        return;
+        currentOpen.promise = syncPromise;
+        await syncPromise;
+      } finally {
+        if (!backgroundSync) clearPendingMainThreadOpen();
       }
-      const sessionIsCurrent = captureSessionEpoch();
-      const persistentView = await readPersistentThreadView(targetHostId, threadId);
-      if (
-        persistentView !== null &&
-        sessionIsCurrent() &&
-        isCurrentViewTransition(viewEpoch) &&
-        navigation.selectedHostId === targetHostId &&
-        navigation.selectedThreadId === threadId
-      ) {
-        upsertThreadView(persistentView);
-        restoreThreadView(targetHostId, threadId);
-        const cachedTurnLimit = Math.max(
-          INITIAL_TURN_PAGE_LIMIT,
-          threadTurnsFromHistory(persistentView.history).length,
-        );
-        rememberOpenThread(threadId);
-        syncSelectedRoute({ replace: context?.replaceRoute });
-        requestScrollToLatest();
-        void syncOpenThreadFromServer({
-          hostId: targetHostId,
-          projectId: persistentView.projectId ?? targetProjectId,
-          threadId,
-          viewEpoch,
-          replaceRoute: context?.replaceRoute,
-          showLoading: false,
-          scrollToLatest: false,
-          limit: cachedTurnLimit,
-        });
-        return;
+
+      function clearPendingMainThreadOpen() {
+        if (pendingMainThreadOpens.get(openKey) === currentOpen) {
+          pendingMainThreadOpens.delete(openKey);
+        }
       }
-      await syncOpenThreadFromServer({
-        hostId: targetHostId,
-        projectId: targetProjectId,
-        threadId,
-        viewEpoch,
-        replaceRoute: context?.replaceRoute,
-        showLoading: true,
-      });
     },
 
     async openThreadPreview(
@@ -199,6 +250,14 @@ export function createThreadOpenActions() {
           );
           if (!panelStillOpen) useGatewayRealtimeStore().cancelThreadEvents(hostId, threadId);
           return undefined;
+        }
+        if (result.stale === true) {
+          patchThreadView(hostId, threadId, {
+            projectId: result.projectId ?? context.projectId ?? existing?.projectId ?? null,
+            loading: false,
+            error: gateway.t("app.latestHistoryUnavailable"),
+          });
+          return views.threadViews[key];
         }
         upsertThreadView({
           hostId,
@@ -263,9 +322,19 @@ export function createThreadOpenActions() {
           !sessionIsCurrent() ||
           views.viewEpoch !== viewEpoch ||
           navigation.selectedHostId !== hostId ||
-          navigation.selectedThreadId !== threadId ||
-          (result.eventEpoch === views.eventEpoch && result.lastEventId < views.lastEventId)
+          navigation.selectedThreadId !== threadId
         )
+          return;
+        if (result.stale === true) {
+          views.resetCurrentView();
+          gateway.setError(gateway.t("app.latestHistoryUnavailable"), {
+            hostId,
+            projectId,
+            threadId,
+          });
+          return;
+        }
+        if (result.eventEpoch === views.eventEpoch && result.lastEventId < views.lastEventId)
           return;
         applyThreadSnapshotResult(threadId, result);
         cacheSelectedThreadView();
@@ -326,7 +395,7 @@ export function createThreadOpenActions() {
     async startThread(
       options: ComposerTurnOptions = {},
       context?: { hostId?: number; projectId?: number | null },
-    ) {
+    ): Promise<string | null> {
       const gateway = useGatewayBootstrapStore();
       const navigation = useGatewayNavigationStore();
       cacheSelectedThreadView();
@@ -337,13 +406,13 @@ export function createThreadOpenActions() {
         navigation.selectedProjectId = context.projectId ?? null;
         clearCurrentThreadView();
       }
-      if (navigation.selectedHostId === null) return;
+      if (navigation.selectedHostId === null) return null;
       const sessionIsCurrent = captureSessionEpoch();
       const hostId = navigation.selectedHostId;
       const projectId = navigation.selectedProjectId;
       try {
         const result = await requestStartThread(options);
-        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         const threadId = applyStartedThreadResult(result);
         cacheSelectedThreadView();
         rememberOpenThread(threadId);
@@ -360,12 +429,14 @@ export function createThreadOpenActions() {
         // just upgraded/restarted, but it must not leave a successfully created thread unreachable.
         await navigation.listThreads();
         cacheSelectedThreadView();
+        return threadId;
       } catch (error: unknown) {
-        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return;
+        if (!sessionIsCurrent() || !isCurrentViewTransition(viewEpoch)) return null;
         gateway.setError(
           messageFromError(error, gateway.t("app.openThreadFailed"), gateway.errorLabels),
           { hostId, projectId, threadId: navigation.selectedThreadId },
         );
+        return null;
       }
     },
   };
@@ -398,6 +469,21 @@ async function recoverThreadSnapshot(hostId: number, threadId: string) {
     const retainedView = views.threadViews[key];
     if (!stillSelected && retainedView === undefined) {
       useGatewayRealtimeStore().cancelThreadEvents(hostId, threadId);
+      return;
+    }
+
+    if (result.stale === true) {
+      const message = gateway.t("app.latestHistoryUnavailable");
+      if (stillSelected) {
+        views.resetCurrentView();
+        gateway.setError(message, {
+          hostId,
+          projectId: existing?.projectId ?? null,
+          threadId,
+        });
+      } else if (retainedView !== undefined) {
+        patchThreadView(hostId, threadId, { loading: false, error: message });
+      }
       return;
     }
 
@@ -462,25 +548,32 @@ async function syncOpenThreadFromServer(input: {
   gateway.clearError();
   try {
     const result = await requestActivateThreadSnapshot(input);
-    if (
-      !sessionIsCurrent() ||
-      !isCurrentViewTransition(input.viewEpoch) ||
-      (result.eventEpoch === views.eventEpoch && result.lastEventId < views.lastEventId)
-    )
+    if (!sessionIsCurrent() || !isCurrentViewTransition(input.viewEpoch)) return;
+    if (result.stale === true) {
+      views.resetCurrentView();
+      gateway.setError(gateway.t("app.latestHistoryUnavailable"), {
+        hostId: input.hostId,
+        projectId: input.projectId,
+        threadId: input.threadId,
+      });
       return;
+    }
+    if (result.eventEpoch === views.eventEpoch && result.lastEventId < views.lastEventId) return;
     applyThreadSnapshotResult(input.threadId, result);
     cacheSelectedThreadView();
     finishThreadSelection(input.threadId, input.replaceRoute);
     void refreshGoalAfterOpen(input.hostId, input.threadId);
     if (input.scrollToLatest ?? true) requestScrollToLatest();
   } catch (error: unknown) {
-    if (!sessionIsCurrent()) return;
+    if (!sessionIsCurrent() || !isCurrentViewTransition(input.viewEpoch)) return;
     gateway.setError(
       messageFromError(error, gateway.t("app.openThreadFailed"), gateway.errorLabels),
       { hostId: input.hostId, projectId: input.projectId, threadId: input.threadId },
     );
   } finally {
-    if (input.showLoading && sessionIsCurrent()) views.loading = false;
+    if (input.showLoading && sessionIsCurrent() && isCurrentViewTransition(input.viewEpoch)) {
+      views.loading = false;
+    }
   }
 }
 
@@ -523,5 +616,8 @@ async function refreshGoalAfterOpen(hostId: number, threadId: string) {
 }
 
 function retainedTurnLimit(history: ThreadHistoryState | null) {
-  return Math.max(INITIAL_TURN_PAGE_LIMIT, threadTurnsFromHistory(history).length);
+  return Math.min(
+    MAX_TURN_PAGE_LIMIT,
+    Math.max(INITIAL_TURN_PAGE_LIMIT, threadTurnsFromHistory(history).length),
+  );
 }

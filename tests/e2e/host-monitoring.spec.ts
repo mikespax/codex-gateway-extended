@@ -21,13 +21,17 @@ test("streams real Linux Host metrics through the shared realtime connection", a
   await page.getByTestId("open-host-monitor-button").click();
   const panel = page.getByTestId("host-metrics-panel");
   await expect(panel).toBeVisible();
-  await expect(panel.getByTestId("host-metric-cpu")).toBeVisible({ timeout: 30_000 });
-  await expect(panel.getByTestId("host-metric-memory")).toBeVisible();
-  await expect(panel.getByTestId("host-metric-network")).toBeVisible();
-  await expect(panel.getByTestId("host-metric-disk")).toBeVisible();
+  await expect(panel.getByTestId(`host-metric-cpu-${project.hostId}`)).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(panel.getByTestId(`host-metric-memory-${project.hostId}`)).toBeVisible();
+  await expect(panel.getByTestId(`host-metric-network-${project.hostId}`)).toBeVisible();
+  await expect(panel.getByTestId(`host-metric-disk-${project.hostId}`)).toBeVisible();
   await expect(panel.getByText("实时采集中")).toBeVisible();
   await expect(panel.getByRole("heading", { name: "GPU", exact: true })).toBeVisible();
-  await expect(panel.getByTestId("host-metric-gpu-0")).toContainText("E2E Training GPU");
+  await expect(panel.getByTestId(`host-metric-gpu-${project.hostId}-0`)).toContainText(
+    "E2E Training GPU",
+  );
   const gpuProcesses = panel.getByTestId("host-gpu-processes");
   await expect(gpuProcesses).toBeVisible();
   await expect(gpuProcesses.getByText("trainer", { exact: true }).first()).toBeVisible();
@@ -41,5 +45,5 @@ test("streams real Linux Host metrics through the shared realtime connection", a
   await page.getByTestId("open-host-monitor-button").click();
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("heading", { name: hostName })).toBeVisible();
-  await expect(panel.getByTestId("host-metric-cpu")).toBeVisible();
+  await expect(panel.getByTestId(`host-metric-cpu-${project.hostId}`)).toBeVisible();
 });

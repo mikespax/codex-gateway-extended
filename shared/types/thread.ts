@@ -8,6 +8,8 @@ export interface ThreadRuntimeStatusUpdate {
   threadId: string;
   status: ThreadRuntimeStatus;
   turnId?: string | null;
+  /** Advisory, bounded label for sidebar rows that are not currently open. */
+  currentOperation?: string | null;
 }
 export type ThreadGoalStatus =
   | "active"
@@ -46,6 +48,8 @@ export interface ThreadOpenResult {
   hostId: number;
   thread: GatewayThread;
   history: ThreadTimelineHistoryState;
+  /** True when the Gateway could only return a retained snapshot after live refresh failed. */
+  stale?: boolean;
   lastEventId: number;
   eventEpoch: string;
   runtimeStatus?: ThreadRuntimeStatus | null;

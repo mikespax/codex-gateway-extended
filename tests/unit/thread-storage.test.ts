@@ -5,6 +5,7 @@ import {
   isThreadStoragePathInCodexSessions,
   parseThreadStorageScanOutput,
   ThreadStorageScanner,
+  THREAD_STORAGE_CACHE_TTL_MS,
   THREAD_STORAGE_SCAN_TIMEOUT_MS,
 } from "../../server/utils/gateway/infra/codex/thread-storage";
 import {
@@ -67,6 +68,8 @@ void test("thread storage scan command scopes rollout and attachments to Codex r
   assert.match(command, /archived_root/);
   assert.match(command, /attachment_root/);
   assert.match(command, /inside_root/);
+  assert.match(command, /discover_rollout/);
+  assert.match(command, /find.*sessions_root/);
   assert.match(command, /grep -aoE/);
   assert.match(command, /sort -u/);
   assert.doesNotMatch(command, /du -sk.*cwd/);
@@ -107,20 +110,20 @@ void test("thread storage scanner performs one bulk scan and caches results for 
   );
   assert.equal(calls, 1);
   assert.equal(timeout, THREAD_STORAGE_SCAN_TIMEOUT_MS);
-  now += 60_001;
+  now += THREAD_STORAGE_CACHE_TTL_MS + 1;
   await scanner.scan(scanHost, threads);
   assert.equal(calls, 2);
 });
 
-void test("unresolved thread paths return neutral size data without a remote scan", async () => {
+void test("thread storage scanner discovers a rollout when its path is unavailable", async () => {
   let calls = 0;
   const scanner = new ThreadStorageScanner({
     exec: async () => {
       calls += 1;
-      return { code: 0, stdout: "", stderr: "" };
+      return { code: 0, stdout: "0\t789", stderr: "" };
     },
   });
   const result = await scanner.scan({ ...host, id: 8 }, [{ id: "missing", path: null }]);
-  assert.deepEqual([...result], [["missing", null]]);
-  assert.equal(calls, 0);
+  assert.deepEqual([...result], [["missing", 789]]);
+  assert.equal(calls, 1);
 });

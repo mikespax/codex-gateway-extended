@@ -3,56 +3,21 @@ import { computed } from "vue";
 import { Message, MessageContent } from "@codex-gateway/ai-elements/message";
 import { Badge } from "@codex-gateway/ui/badge";
 import MarkdownContent from "@/components/common/MarkdownContent.vue";
-import ThreadImageAttachment from "@/components/thread/attachments/ThreadImageAttachment.vue";
 import MessageTimestamp from "@/components/thread/MessageTimestamp.vue";
 import { threadItemText } from "@/utils/thread-items";
+import ThreadImageReferences from "@/components/thread/attachments/ThreadImageReferences.vue";
 import type { ThreadHistoryItem } from "~~/shared/types";
-import { recordFromUnknown } from "~~/shared/utils/records";
 
 const props = defineProps<{
   item: ThreadHistoryItem;
   hostId: number | null;
+  showInlineImages?: boolean;
   variant?: "normal" | "steer";
   sentAt?: number | string | null;
 }>();
 
 const { t } = useI18n();
 const text = computed(() => threadItemText(props.item));
-type ImagePart = Record<string, unknown> & { type: "image" | "localImage" };
-
-function isImagePart(part: Record<string, unknown> | null): part is ImagePart {
-  return part?.type === "image" || part?.type === "localImage";
-}
-
-const imageParts = computed(() => {
-  if (!Array.isArray(props.item.content)) {
-    return [];
-  }
-  return props.item.content
-    .map(recordFromUnknown)
-    .filter(isImagePart)
-    .map((part, index: number) => ({
-      id: `${props.item.id || props.item.clientId || "image"}-${index}`,
-      type: part.type,
-      url: typeof part.url === "string" ? part.url : "",
-      path: typeof part.path === "string" ? part.path : "",
-      detail: typeof part.detail === "string" ? part.detail : null,
-    }));
-});
-
-function imageSource(image: { type: string; url: string; path: string }) {
-  if (image.type === "image") {
-    return image.url;
-  }
-  if (image.type === "localImage" && props.hostId && image.path) {
-    const query = new URLSearchParams({
-      hostId: String(props.hostId),
-      path: image.path,
-    });
-    return `/api/remote/images?${query.toString()}`;
-  }
-  return "";
-}
 </script>
 
 <template>
@@ -75,16 +40,11 @@ function imageSource(image: { type: string; url: string; path: string }) {
           t("app.steeredConversation")
         }}</Badge>
       </div>
-      <div v-if="imageParts.length" class="grid max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
-        <template v-for="image in imageParts" :key="image.id">
-          <ThreadImageAttachment
-            v-if="imageSource(image)"
-            :source="imageSource(image)"
-            :label="image.path || null"
-            :detail="image.detail"
-          />
-        </template>
-      </div>
+      <ThreadImageReferences
+        :item="item"
+        :host-id="hostId"
+        :show="props.showInlineImages !== false"
+      />
       <MarkdownContent v-if="text" :content="text" compact />
       <div v-if="props.sentAt != null" class="flex justify-end">
         <MessageTimestamp :value="props.sentAt" />

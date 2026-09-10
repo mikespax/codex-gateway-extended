@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { Toaster } from "@codex-gateway/ui/sonner";
 import LoginScreen from "@/components/auth/LoginScreen.vue";
@@ -17,15 +17,24 @@ const navigation = useGatewayNavigationStore();
 const threadView = useGatewayThreadViewStore();
 const realtime = useGatewayRealtimeStore();
 const auth = useAuthStore();
+const route = useRoute();
 const device = useDevice();
 const { initializing } = storeToRefs(bootstrap);
 const { selectedThreadId } = storeToRefs(navigation);
 const { currentThread } = storeToRefs(threadView);
 const { initialized, isAuthenticated, token } = storeToRefs(auth);
 const mounted = ref(false);
+const compactViewport = ref(false);
 let activeSessionToken = "";
-const layoutName = computed(() => (device.isMobileOrTablet ? "mobile" : "default"));
+let compactViewportQuery: MediaQueryList | null = null;
+const layoutName = computed(() =>
+  device.isMobileOrTablet || compactViewport.value ? "mobile" : "default",
+);
+const isUsagePage = computed(() => route.path === "/usage");
 const pageTitle = computed(() => {
+  if (isUsagePage.value) {
+    return "Codex usage - Codex Gateway";
+  }
   if (!selectedThreadId.value || !currentThread.value) {
     return "Codex Gateway";
   }
@@ -55,8 +64,22 @@ useHead({
 });
 
 onMounted(() => {
+  // A desktop browser can be narrowed below the point where a persistent sidebar and useful
+  // chat workspace fit together. Treat that compact desktop viewport like mobile: expose the
+  // existing Sheet-backed chat drawer instead of leaving the off-canvas desktop sidebar hidden.
+  compactViewportQuery = window.matchMedia("(max-width: 959px)");
+  compactViewport.value = compactViewportQuery.matches;
+  compactViewportQuery.addEventListener("change", updateCompactViewport);
   mounted.value = true;
   auth.hydrate();
+});
+
+function updateCompactViewport(event: MediaQueryListEvent) {
+  compactViewport.value = event.matches;
+}
+
+onBeforeUnmount(() => {
+  compactViewportQuery?.removeEventListener("change", updateCompactViewport);
 });
 
 watch(
@@ -92,5 +115,6 @@ watch(
   >
   <Toaster rich-colors position="top-right" />
   <LoginScreen v-if="mounted && !isAuthenticated" />
+  <NuxtPage v-else-if="isUsagePage" />
   <NuxtLayout v-else :name="layoutName" />
 </template>

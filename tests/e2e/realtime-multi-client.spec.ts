@@ -71,13 +71,7 @@ test("fans out a real remote app-server thread to multiple browser clients acros
     timeout: 120_000,
   });
   const processToggle = firstIntermediateStepsToggle(page);
-  if (
-    (await processToggle.isVisible().catch(() => false)) &&
-    (await processToggle.getAttribute("data-state")) !== "open"
-  ) {
-    await processToggle.click();
-    await expect(processToggle).toHaveAttribute("data-state", "open");
-  }
+  await expect(processToggle).toHaveAttribute("data-state", "open");
   await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "已完成", {
     timeout: 120_000,
   });
@@ -101,7 +95,7 @@ test("fans out a real remote app-server thread to multiple browser clients acros
     timeout: 120_000,
   });
   await expect(page.getByTestId(`thread-button-${threadId}`).getByLabel("已完成")).toBeVisible();
-  await firstIntermediateStepsToggle(page).click();
+  await expect(firstIntermediateStepsToggle(page)).toHaveAttribute("data-state", "closed");
   await revealVirtualizedChatLocator(
     page,
     page
@@ -112,6 +106,7 @@ test("fans out a real remote app-server thread to multiple browser clients acros
   await reloadApp(page);
   await expect(firstIntermediateStepsToggle(page)).toHaveAttribute("data-state", "closed");
   await firstIntermediateStepsToggle(page).click();
+  await expect(firstIntermediateStepsToggle(page)).toHaveAttribute("data-state", "open");
   await revealVirtualizedChatLocator(
     page,
     page

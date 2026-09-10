@@ -21,6 +21,91 @@ test("collapses the desktop sidebar and restores the saved layout", async ({ pag
   await expect(page.getByTestId("desktop-sidebar-collapse")).toBeVisible();
 });
 
+test("shows a scrolling overview of goal, turn, task, and user input", async ({ page }) => {
+  await openApp(page);
+  const updatedAt = Math.floor(Date.now() / 1000);
+  await page.evaluate((updatedAt) => {
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    const { activity } = driver;
+    activity.ingestMetadata(
+      1,
+      [
+        {
+          id: "sidebar-summary-thread",
+          projectId: null,
+          parentThreadId: null,
+          agentNickname: null,
+          agentRole: null,
+          title: "Summary Thread",
+          name: null,
+          preview: null,
+          cwd: "/workspace",
+          recencyAt: updatedAt,
+          updatedAt,
+        },
+      ],
+      driver.catalog.projects,
+    );
+    activity.updateThreadGoal(1, "sidebar-summary-thread", {
+      objective: "Repair the Gateway thread-history refresh so new messages remain visible",
+      status: "active",
+    });
+    activity.updateTurnSummary(
+      1,
+      "sidebar-summary-thread",
+      "The refresh path now preserves the newest messages.",
+    );
+    activity.updateLastUserInput(
+      1,
+      "sidebar-summary-thread",
+      "Please verify the Gateway history refresh.",
+    );
+  }, updatedAt);
+
+  const row = page.getByTestId("recent-thread-button-sidebar-summary-thread");
+  await expect(row).toBeVisible();
+  const overview = row.getByTestId("thread-sidebar-overview");
+  const goal = row.getByTestId("thread-sidebar-overview-goal");
+  await expect(overview).toBeVisible();
+  await expect(goal).toHaveText(
+    "Repair the Gateway thread-history refresh so new messages remain visible",
+  );
+  await expect(goal.locator(".gateway-sidebar-activity-marquee")).toBeVisible();
+  await expect(row.getByTestId("thread-sidebar-overview-turnSummary")).toHaveText(
+    "The refresh path now preserves the newest messages.",
+  );
+  await expect(row.getByTestId("thread-sidebar-overview-lastUserInput")).toHaveText(
+    "Please verify the Gateway history refresh.",
+  );
+  await expect(overview.getByText("Last:", { exact: true })).toBeVisible();
+  await expect(overview.getByText("User:", { exact: true })).toBeVisible();
+
+  await page.evaluate(() => {
+    const activity = window.__codexGatewayE2e?.activity;
+    if (!activity) throw new Error("Gateway E2E activity store is unavailable");
+    activity.updateThreadGoal(1, "sidebar-summary-thread", null);
+    activity.updateCurrentOperation(
+      1,
+      "sidebar-summary-thread",
+      "Updating files while refreshing the sidebar",
+    );
+  });
+  await expect(row.getByTestId("thread-sidebar-overview-currentTask")).toHaveText(
+    "Updating files while refreshing the sidebar",
+  );
+  await expect(row.getByTestId("thread-sidebar-overview-goal")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const activity = window.__codexGatewayE2e?.activity;
+    if (!activity) throw new Error("Gateway E2E activity store is unavailable");
+    activity.updateTurnSummary(1, "sidebar-summary-thread", null);
+    activity.updateCurrentOperation(1, "sidebar-summary-thread", null);
+    activity.updateLastUserInput(1, "sidebar-summary-thread", null);
+  });
+  await expect(row.getByTestId("thread-sidebar-overview")).toHaveCount(0);
+});
+
 test("uses the selected host's most recently used project for a new thread", async ({ page }) => {
   await openApp(page);
   const host = {
@@ -93,6 +178,7 @@ test("uses the selected host's most recently used project for a new thread", asy
       );
       views.startThread = async (_options, context) => {
         window.__codexGatewayNewThreadContext = context ?? null;
+        return null;
       };
     },
     { host, currentHost, firstProject, recentProject, currentProject },
@@ -100,6 +186,9 @@ test("uses the selected host's most recently used project for a new thread", asy
 
   await page.getByTestId("new-thread-button").click();
   await page.getByTestId(`new-thread-host-option-${host.id}`).click();
+  await expect(page.getByTestId("new-thread-name-dialog")).toBeVisible();
+  await page.getByTestId("new-thread-name-input").fill("Named global chat");
+  await page.getByTestId("new-thread-create-submit").click();
   await expect
     .poll(() => page.evaluate(() => window.__codexGatewayNewThreadContext ?? null))
     .toEqual({ hostId: host.id, projectId: recentProject.id });

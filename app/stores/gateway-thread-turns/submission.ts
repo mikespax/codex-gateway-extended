@@ -16,6 +16,7 @@ import {
   pinnedKey,
 } from "@/stores/gateway/thread-utils/identity";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
+import { useGatewayConfigStore } from "@/stores/gateway-config";
 import {
   cacheSelectedThreadView,
   requestScrollToLatest,
@@ -40,6 +41,7 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
   const sessionIsCurrent = captureSessionEpoch();
   const catalog = useGatewayCatalogStore();
   const gateway = useGatewayBootstrapStore();
+  const config = useGatewayConfigStore();
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
   const runtimeStore = useGatewayThreadRuntimeStore();
@@ -144,6 +146,7 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
     );
     if (!sessionIsCurrent()) return;
     applyAcceptedTurnResult(hostId, threadId, result, clientUserMessageId, optimisticContent);
+    await promoteInactivePinnedThread(config, hostId, threadId);
     if (!shouldSteerActiveTurn) {
       composer.setThreadSettings(hostId, threadId, {
         ...(options.model !== undefined ? { model: options.model } : {}),
@@ -165,6 +168,29 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
     }
   } finally {
     if (sessionIsCurrent() && targetIsSelected()) views.loading = false;
+  }
+}
+
+/** A deliberate send reactivates an explicitly inactive pinned thread after acceptance. */
+async function promoteInactivePinnedThread(
+  config: ReturnType<typeof useGatewayConfigStore>,
+  hostId: number,
+  threadId: string,
+) {
+  const thread = config.gatewayConfig.pinnedThreads.find(
+    (candidate) => candidate.hostId === hostId && candidate.threadId === threadId,
+  );
+  if (thread?.inactive !== true) return;
+  try {
+    await config.setPinnedThreadInactive(thread, false);
+  } catch (error: unknown) {
+    // The turn was accepted; a config-sync failure must not make the user retry it. The next
+    // config refresh can reconcile the row, while the current message remains available.
+    console.warn("[gateway] accepted turn could not promote inactive thread", {
+      hostId,
+      threadId,
+      error,
+    });
   }
 }
 

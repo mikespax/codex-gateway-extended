@@ -23,6 +23,7 @@ export type GatewayRealtimeSetup = ToRefs<RealtimeConnectionState> &
     resetForSessionChange: () => void;
     scheduleReconnect: RealtimeConnection["scheduleReconnect"];
     send: RealtimeConnection["send"];
+    ensureHealthy: RealtimeConnection["ensureHealthy"];
     request: RealtimeRequestBroker["request"];
     installHealthCheck: RealtimeConnection["installHealthCheck"];
     checkConnection: RealtimeConnection["checkConnection"];
@@ -47,6 +48,7 @@ export const useGatewayRealtimeStore = defineStore("gateway-realtime", (): Gatew
   });
   const requestBroker = createRealtimeRequestBroker({
     waitForReady: connection.waitForReady,
+    ensureHealthy: connection.ensureHealthy,
     send: connection.send,
     unavailableMessage: () => t("app.realtimeUnavailable"),
     timeoutMessage: () => t("app.realtimeRequestTimedOut"),
@@ -99,6 +101,7 @@ export const useGatewayRealtimeStore = defineStore("gateway-realtime", (): Gatew
     resetForSessionChange,
     scheduleReconnect: connection.scheduleReconnect,
     send: connection.send,
+    ensureHealthy: connection.ensureHealthy,
     request: requestBroker.request,
     installHealthCheck: connection.installHealthCheck,
     checkConnection: connection.checkConnection,

@@ -15,6 +15,7 @@ import { gatewayThreadFixture, type GatewayThreadFixture } from "../fixtures/gat
 export interface MockThreadSnapshotInput {
   hostId?: number;
   responseDelayMs?: number;
+  dropActivationCount?: number;
   snapshots: Record<
     string,
     {
@@ -29,6 +30,7 @@ export interface MockThreadSnapshotInput {
       lastEventId?: number;
       eventEpoch?: string;
       runtimeStatus?: "idle" | "running" | "completed" | "failed" | "interrupted" | null;
+      stale?: boolean;
     }
   >;
 }
@@ -249,11 +251,13 @@ function handleThreadActivate(
   message: Extract<RealtimeClientMessage, { type: "thread.activate" }>,
 ) {
   state.activateRequests.push(message);
+  const activationIndex = state.activateRequests.length - 1;
   const input = state.snapshots;
   const snapshot = input?.snapshots[message.threadId];
   if (!snapshot) {
     throw new Error(`Missing mocked thread snapshot for ${message.threadId}`);
   }
+  if (activationIndex < (input?.dropActivationCount ?? 0)) return;
   const respond = () => {
     const thread = gatewayThreadFixture(snapshot.thread ?? { id: message.threadId }, {
       hostId: message.hostId ?? input.hostId ?? 1,
@@ -268,6 +272,7 @@ function handleThreadActivate(
       history: projectThreadTimelineHistory(
         snapshot.history ?? { thread: { id: message.threadId, turns: [] } },
       ),
+      ...(snapshot.stale === true ? { stale: true } : {}),
       runtimeStatus: snapshot.runtimeStatus ?? null,
       projectId: snapshot.projectId ?? null,
       project: snapshot.project ?? null,

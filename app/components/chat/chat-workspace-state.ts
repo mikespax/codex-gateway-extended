@@ -19,6 +19,7 @@ export function useChatWorkspaceState() {
       selectedThreadId: navigationRefs.selectedThreadId.value,
       currentThread: viewRefs.currentThread.value,
       history: viewRefs.history.value,
+      authoritative: viewRefs.authoritative.value,
     }),
   );
   const visibleError = computed(() =>
@@ -56,8 +57,10 @@ function isSelectedThreadViewReady(input: {
   selectedThreadId: string | null;
   currentThread: GatewayThread | null;
   history: ThreadHistoryState | null;
+  authoritative: boolean;
 }) {
   if (input.selectedThreadId === null) return true;
+  if (!input.authoritative) return false;
   return (
     input.currentThread?.id === input.selectedThreadId ||
     input.history?.thread.id === input.selectedThreadId

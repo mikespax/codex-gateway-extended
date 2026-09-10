@@ -102,7 +102,7 @@ export function respondToServerRequest(
 export function requestThreadTurnsPage(input: {
   hostId: number;
   threadId: string;
-  cursor: string;
+  cursor: string | null;
   limit: number;
   sortDirection: "asc" | "desc";
 }) {

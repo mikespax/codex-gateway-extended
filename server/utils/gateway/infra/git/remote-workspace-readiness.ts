@@ -20,6 +20,15 @@ const VPS_GENERIC_WORKSPACE_PATHS = new Set([
   "/tmp",
   "/var/tmp",
 ]);
+const VPS_EPHEMERAL_WORKSPACE_ROOTS = ["/tmp", "/var/tmp"] as const;
+
+export function isVpsGenericWorkspacePath(path: string) {
+  const normalizedPath = posix.normalize(path.trim());
+  return (
+    VPS_GENERIC_WORKSPACE_PATHS.has(normalizedPath) ||
+    VPS_EPHEMERAL_WORKSPACE_ROOTS.some((root) => normalizedPath.startsWith(`${root}/`))
+  );
+}
 
 export type SourceWorkspaceKind = "thread_cwd" | "project_cwd" | "operations_fallback";
 
@@ -77,7 +86,7 @@ export interface ResolvedSourceWorkspace {
 }
 
 export class RemoteWorkspaceReadinessService {
-  constructor(private readonly ssh: SshConnectionPool) {}
+  constructor(private readonly ssh: Pick<SshConnectionPool, "exec">) {}
 
   async inspect(host: HostWithSecret, path: string): Promise<RemoteWorkspaceReadiness> {
     const signal = AbortSignal.timeout(READINESS_TIMEOUT_MS);
@@ -136,7 +145,7 @@ export class RemoteWorkspaceReadinessService {
     }
 
     if (
-      VPS_GENERIC_WORKSPACE_PATHS.has(normalizedSourceCwd) &&
+      isVpsGenericWorkspacePath(normalizedSourceCwd) &&
       host.name.trim().toLowerCase() === VPS_HOST_NAME
     ) {
       const fallback = await this.inspect(host, VPS_OPERATIONS_WORKSPACE);

@@ -26,6 +26,12 @@ export async function connectHostRuntime(slot: HostRuntimeSlot, isCurrent: () =>
     // background-only monitoring; otherwise an idle selected thread silently stops receiving.
     await threadBroker.restoreRetainedSubscriptions(slot.host);
     if (!isCurrent()) return;
+    await activeMainThreadMonitor.recoverPinnedThreads({
+      host: slot.host,
+      client,
+      hasController: (threadId) => threadBroker.hasController(slot.host.id, threadId),
+    });
+    if (!isCurrent()) return;
     await activeMainThreadMonitor.recoverHost({
       host: slot.host,
       client,

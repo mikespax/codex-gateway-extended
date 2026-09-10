@@ -11,6 +11,12 @@ defineProps<{
       <span class="flex w-full min-w-0 items-center gap-1.5">
         <slot name="title-prefix" />
         <span class="block min-w-0 flex-1 truncate" :title="title">{{ title }}</span>
+        <span v-if="$slots['title-trailing']" class="ml-auto min-w-0 overflow-hidden text-right">
+          <slot name="title-trailing" />
+        </span>
+      </span>
+      <span v-if="$slots.middle" class="mt-1 block min-w-0 overflow-hidden">
+        <slot name="middle" />
       </span>
       <span
         v-if="subtitle || $slots.subtitle"

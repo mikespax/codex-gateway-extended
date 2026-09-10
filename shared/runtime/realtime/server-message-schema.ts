@@ -116,6 +116,7 @@ const threadRuntimeStatusUpdateSchema = z
     threadId: nonEmptyString,
     status: z.enum(["idle", "running", "completed", "failed", "interrupted"]),
     turnId: z.string().nullable().optional(),
+    currentOperation: z.string().nullable().optional(),
   })
   .strict();
 const tokenUsageBreakdownSchema = z
@@ -149,6 +150,7 @@ const threadOpenResultFields = {
   hostId: positiveId,
   thread: gatewayThreadSchema,
   history: threadHistorySchema,
+  stale: z.boolean().optional(),
   lastEventId: nonNegativeId,
   eventEpoch: nonEmptyString,
   runtimeStatus: z

@@ -4,6 +4,7 @@ import ThreadRow from "./ThreadRow.vue";
 import { formatRelative, threadKey } from "../sidebar-utils";
 import type { ThreadActivitySummary } from "@/stores/gateway-thread-activity";
 import type { ThreadRuntimeStatus } from "@/stores/gateway/types";
+import { sidebarOverviewForThread } from "@/utils/thread-sidebar-summary";
 
 type RecentThread = ThreadActivitySummary & {
   id: string;
@@ -65,6 +66,19 @@ function subtitle(thread: RecentThread) {
         :completion-attention="thread.completionAttention"
         :subtitle="subtitle(thread)"
         :thread-bytes="thread.threadBytes"
+        :activity-overview="
+          sidebarOverviewForThread({
+            goalObjective: thread.goalObjective,
+            goalStatus: thread.goalStatus,
+            currentOperation: thread.currentOperation,
+            turnSummary: thread.turnSummary,
+            lastUserInput: thread.lastUserInput,
+            aiGoalSummary: thread.aiGoalSummary,
+            aiTurnSummary: thread.aiTurnSummary,
+            aiCurrentTask: thread.aiCurrentTask,
+            aiLastUserInput: thread.aiLastUserInput,
+          })
+        "
         :resource-usage="props.resourceUsageForHost?.(thread.hostId)"
         :pin-label="thread.pinned ? $t('app.unpinThread') : $t('app.pinThread')"
         :show-pinned-icon="thread.pinned"

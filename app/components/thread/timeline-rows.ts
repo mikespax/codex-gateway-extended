@@ -15,6 +15,8 @@ const estimatedItemHeights: Partial<Record<ThreadTimelineItem["type"], number>> 
   agentMessage: 144,
   reasoning: 128,
   userMessage: 160,
+  imageView: 220,
+  imageGeneration: 220,
 };
 
 export type ThreadTimelineRow =
@@ -41,6 +43,7 @@ export type ThreadTimelineRow =
       userMessageVariant: "normal" | "steer";
       turnTiming: DisplayedTurnTiming | null;
       agentActionsAvailable: boolean;
+      showInlineImages: boolean;
       sentAt: number | string | null;
       turnIsActive: boolean;
     }
@@ -69,7 +72,8 @@ export interface ThreadTimelineTurnState {
 
 // Every visible entry is a direct row of the Agent timeline. Do not wrap intermediate items in a
 // second virtualizer: two height caches sharing one scroll element can leave stale blank space on
-// WebKit. Collapsing is represented only by omitting intermediate item rows from this flat model.
+// WebKit. Collapsing omits routine intermediate rows from this flat model, while preserving
+// screenshot rows as compact evidence placeholders.
 export function buildThreadTimelineRows(input: {
   threadId: string | null;
   turns: ThreadTimelineTurnState[];
@@ -136,6 +140,14 @@ export function buildThreadTimelineRows(input: {
             footer: true,
           });
         }
+      } else {
+        // Screenshots are useful evidence, not routine implementation chatter. Keep their
+        // compact row visible even while the surrounding intermediate steps stay collapsed behind
+        // the working line. The actual image is only loaded for a turn that is waiting for input.
+        const inlineImages = intermediatePresentation.items.filter(
+          (item) => item.type === "imageView",
+        );
+        appendItemRows(rows, input.threadId, turn, "intermediate", inlineImages, sections);
       }
     });
 
@@ -249,7 +261,6 @@ function isRoutineLiveActivity(item: ThreadTimelineItem) {
     "dynamicToolCall",
     "enteredReviewMode",
     "exitedReviewMode",
-    "imageView",
     "mcpToolCall",
     "sleep",
     "subAgentActivity",
@@ -303,6 +314,7 @@ function intermediateItemPreview(item: ThreadTimelineItem) {
       ? item.query.replace(/\s+/g, " ").trim()
       : "Web search";
   }
+  if (item.type === "imageView") return "Screenshot available";
   const text = "text" in item && typeof item.text === "string" ? item.text : "";
   return text.replace(/\s+/g, " ").trim() || item.type;
 }
@@ -328,9 +340,38 @@ function appendItemRows(
       userMessageVariant: userMessageVariant(item, sections),
       turnTiming: item === timingTarget ? timing : null,
       agentActionsAvailable: item === timingTarget && agentActionsAvailable,
+      showInlineImages: shouldShowInlineImages(sections.items),
       sentAt: messageTimestamp(item, turn),
       turnIsActive: sections.turnIsActive,
     });
+  });
+}
+
+export function shouldShowInlineImages(items: ThreadTimelineItem[]) {
+  // Historical user attachments are part of the same persisted transcript as agent/tool
+  // screenshots. Keep every recorded image hidden until this turn is actively waiting for an
+  // answer or approval; that is the only point where an inline image is actionable.
+  return hasPendingUserInput(items);
+}
+
+function hasPendingUserInput(items: ThreadTimelineItem[]) {
+  return items.some((item) => {
+    const requestId = item.requestId ?? item.pendingApproval?.requestId;
+    if (requestId === null || requestId === undefined || String(requestId).trim() === "") {
+      return false;
+    }
+    return [
+      "attestationRequest",
+      "chatgptAuthTokensRefreshRequest",
+      "commandExecution",
+      "dynamicToolClientRequest",
+      "fileChange",
+      "hookPrompt",
+      "mcpElicitationRequest",
+      "permissionsRequest",
+      "requestUserInput",
+      "serverRequest",
+    ].includes(item.type);
   });
 }
 
@@ -402,6 +443,7 @@ function sameTimelineRow(left: ThreadTimelineRow, right: ThreadTimelineRow) {
       left.section === right.section &&
       left.userMessageVariant === right.userMessageVariant &&
       left.agentActionsAvailable === right.agentActionsAvailable &&
+      left.showInlineImages === right.showInlineImages &&
       left.sentAt === right.sentAt &&
       left.turnIsActive === right.turnIsActive &&
       sameTurnTiming(left.turnTiming, right.turnTiming)

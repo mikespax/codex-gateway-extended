@@ -39,7 +39,6 @@ import {
   installDeferredThreadTurnsLoadStub,
   requestOlderTurnsFromStore,
   releaseDeferredThreadTurnsLoad,
-  startBottomDistanceTracking,
   startElementTopTracking,
   startLocatorTopTracking,
   stopFrameTracking,
@@ -157,9 +156,94 @@ test("same-page thread switches retain the loaded history depth", async ({ page 
   ]);
 });
 
-test("IndexedDB restores a thread immediately and then accepts the authoritative snapshot", async ({
-  page,
-}) => {
+test("repeated opens of one thread share the pending activation", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-repeated-open-dedup";
+  await installRealtimeThreadSnapshotMock(page, {
+    responseDelayMs: 500,
+    snapshots: {
+      [threadId]: {
+        thread: { id: threadId, name: "Repeated Open" },
+        history: {
+          thread: { id: threadId, turns: buildTextTurns(1, 1, "deduplicated open") },
+        },
+        projectId: 1,
+      },
+    },
+  });
+
+  const result = await page.evaluate(async (threadId) => {
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    driver.navigation.selectedThreadId = null;
+    driver.views.resetCurrentView();
+    await Promise.all(
+      Array.from({ length: 3 }, () =>
+        driver.views.openThread(threadId, { hostId: 1, projectId: 1 }),
+      ),
+    );
+    return {
+      selectedThreadId: driver.navigation.selectedThreadId,
+      authoritative: driver.views.authoritative,
+      history: JSON.stringify(driver.views.history),
+    };
+  }, threadId);
+
+  expect(result.selectedThreadId).toBe(threadId);
+  expect(result.authoritative).toBe(true);
+  expect(result.history).toContain("deduplicated open");
+  expect(await threadActivateRequests(page)).toHaveLength(1);
+});
+
+test("a repeated activation retries after a stalled request", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-retry-stalled-thread-activation";
+  await seedGatewayThread(page, {
+    projectId: 1,
+    threadId: null,
+    currentThread: null,
+    history: null,
+    threads: [{ id: threadId, name: "Retry stalled activation" }],
+  });
+  await installRealtimeThreadSnapshotMock(page, {
+    dropActivationCount: 1,
+    snapshots: {
+      [threadId]: {
+        thread: { id: threadId, name: "Retry stalled activation" },
+        history: {
+          thread: { id: threadId, turns: buildTextTurns(1, 1, "retried thread content") },
+        },
+        projectId: 1,
+      },
+    },
+  });
+
+  await page.evaluate((threadId) => {
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    void driver.views.openThread(threadId, { hostId: 1, projectId: 1 });
+  }, threadId);
+  await expect.poll(() => threadActivateRequests(page).then((requests) => requests.length)).toBe(1);
+
+  await page.evaluate(async (threadId) => {
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    await driver.views.openThread(threadId, { hostId: 1, projectId: 1 });
+  }, threadId);
+
+  await expect.poll(() => threadActivateRequests(page).then((requests) => requests.length)).toBe(2);
+  await expect(page.getByText(/retried thread content 001/)).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        loading: window.__codexGatewayE2e?.views.loading,
+        selectedThreadId: window.__codexGatewayE2e?.navigation.selectedThreadId,
+      })),
+    )
+    .toEqual({ loading: false, selectedThreadId: threadId });
+});
+
+test("a cached thread stays hidden until the authoritative snapshot arrives", async ({ page }) => {
   await openApp(page);
   const threadId = "e2e-indexeddb-stale-while-revalidate";
   const cachedHistory = {
@@ -181,11 +265,16 @@ test("IndexedDB restores a thread immediately and then accepts the authoritative
     views.cacheSelectedThreadView();
   });
   await expect
-    .poll(() => indexedDbContains(page, "indexeddb cached turn"), { timeout: 5_000 })
+    .poll(() =>
+      page.evaluate(
+        (threadId) => Boolean(window.__codexGatewayE2e?.views.threadViews[`1:${threadId}`]),
+        threadId,
+      ),
+    )
     .toBe(true);
 
   await installRealtimeThreadSnapshotMock(page, {
-    responseDelayMs: 1_500,
+    responseDelayMs: 4_000,
     snapshots: {
       [threadId]: {
         thread: { id: threadId, name: "Persistent Cache" },
@@ -198,25 +287,80 @@ test("IndexedDB restores a thread immediately and then accepts the authoritative
     const driver = window.__codexGatewayE2e;
     if (!driver) throw new Error("Gateway E2E driver is unavailable");
     const startedAt = performance.now();
-    driver.views.threadViews = {};
+    driver.bootstrap.error = null;
     driver.views.resetCurrentView();
     driver.navigation.selectedThreadId = null;
     await driver.views.openThread(threadId, { hostId: 1, projectId: 1 });
     return {
       elapsedMs: performance.now() - startedAt,
       history: JSON.stringify(driver.views.history),
+      authoritative: driver.views.authoritative,
     };
   }, threadId);
 
   expect(restored.elapsedMs).toBeLessThan(1_000);
   expect(restored.history).toContain("indexeddb cached turn");
+  expect(restored.authoritative).toBe(false);
+  await expect(
+    page.getByTestId("chat-scroll-area").getByText(/Loading remote threads|正在加载远端会话/),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("chat-main-pane")
+      .getByText(/indexeddb cached turn 001/)
+      .first(),
+  ).toBeHidden();
   await expect.poll(() => threadActivateRequests(page).then((requests) => requests.length)).toBe(1);
   await expect
     .poll(
       () => page.evaluate(() => JSON.stringify(window.__codexGatewayE2e?.views.history ?? null)),
-      { timeout: 5_000 },
+      { timeout: 8_000 },
     )
     .toContain("server refreshed turn");
+  await expect(page.getByText(/server refreshed turn 001/)).toBeVisible();
+});
+
+test("a stale Gateway fallback is never rendered as current history", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-stale-gateway-fallback";
+  await seedGatewayThread(page, {
+    projectId: 1,
+    currentThread: null,
+    history: null,
+  });
+  await installRealtimeThreadSnapshotMock(page, {
+    snapshots: {
+      [threadId]: {
+        thread: { id: threadId, name: "Stale fallback" },
+        history: {
+          thread: { id: threadId, turns: buildTextTurns(1, 1, "stale fallback turn") },
+        },
+        projectId: 1,
+        stale: true,
+      },
+    },
+  });
+
+  const state = await page.evaluate(async (threadId) => {
+    const driver = window.__codexGatewayE2e;
+    if (!driver) throw new Error("Gateway E2E driver is unavailable");
+    driver.navigation.selectedThreadId = null;
+    driver.views.resetCurrentView();
+    await driver.views.openThread(threadId, { hostId: 1, projectId: 1 });
+    return {
+      history: driver.views.history,
+      authoritative: driver.views.authoritative,
+      selectedThreadId: driver.navigation.selectedThreadId,
+    };
+  }, threadId);
+
+  expect(state.history).toBeNull();
+  expect(state.authoritative).toBe(false);
+  expect(state.selectedThreadId).toBe(threadId);
+  await expect(page.getByText("stale fallback turn", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByTestId("chat-scroll-area").getByText(/Latest history is unavailable/),
+  ).toBeVisible();
 });
 
 test("event-gap recovery retains the loaded history depth", async ({ page }) => {
@@ -262,34 +406,6 @@ test("event-gap recovery retains the loaded history depth", async ({ page }) => 
     .poll(() => page.evaluate(() => window.__codexGatewayE2e?.views.history?.thread.turns.length))
     .toBe(5);
 });
-
-function indexedDbContains(page: Page, marker: string) {
-  return page.evaluate(async (marker) => {
-    const databases = await indexedDB.databases();
-    if (!databases.some((database) => database.name === "codex-gateway-thread-view-cache")) {
-      return false;
-    }
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("codex-gateway-thread-view-cache");
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
-    });
-    try {
-      if (!database.objectStoreNames.contains("threadViews")) return false;
-      const records = await new Promise<unknown[]>((resolve, reject) => {
-        const request = database
-          .transaction("threadViews", "readonly")
-          .objectStore("threadViews")
-          .getAll();
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error ?? new Error("IndexedDB read failed"));
-      });
-      return JSON.stringify(records).includes(marker);
-    } finally {
-      database.close();
-    }
-  }, marker);
-}
 
 function selectedTimelineUsesCachedReference(page: Page, threadId: string) {
   return page.evaluate((threadId) => {
@@ -342,10 +458,15 @@ test("streaming output stays pinned when the user is already at the latest conte
   });
 
   await expect(page.getByText("pinned stream line 090")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Intermediate steps|中间过程/ })).toHaveAttribute(
-    "data-state",
-    "open",
-  );
+  const pinnedIntermediateToggle = page.getByRole("button", {
+    name: /Intermediate steps|中间过程/,
+  });
+  await expect(pinnedIntermediateToggle).toHaveAttribute("data-state", "open");
+  await expect(page.getByTestId("intermediate-steps-working")).toBeVisible();
+  await pinnedIntermediateToggle.click();
+  await expect(pinnedIntermediateToggle).toHaveAttribute("data-state", "closed");
+  await pinnedIntermediateToggle.click();
+  await expect(pinnedIntermediateToggle).toHaveAttribute("data-state", "open");
   await scrollChatViewportToBottom(page);
   await expect(page.getByTestId("chat-scroll-area")).toHaveAttribute("data-follow-latest", "true");
 
@@ -1004,7 +1125,7 @@ test("streaming output does not force scroll when the user is reading earlier co
   await expect.poll(() => commandOutputScrollTop(page)).toBeLessThanOrEqual(commandScrollTop + 2);
 });
 
-test("completed turns do not collapse intermediate steps while the user is detached", async ({
+test("completed turns collapse intermediate steps even when the user is detached", async ({
   page,
 }) => {
   await openApp(page);
@@ -1054,21 +1175,16 @@ test("completed turns do not collapse intermediate steps while the user is detac
     finalText: "final answer after intermediate work",
   });
 
-  await expect(page.getByTestId("intermediate-steps")).toBeVisible();
-  await expect(page.getByText(visibleAnchor.text)).toBeVisible();
-  await page.waitForTimeout(300);
-  await expect
-    .poll(() => visibleTextTop(page, visibleAnchor.text))
-    .toBeGreaterThanOrEqual(visibleAnchor.top - 2);
-  await expect
-    .poll(() => visibleTextTop(page, visibleAnchor.text))
-    .toBeLessThanOrEqual(visibleAnchor.top + 2);
+  await expect(page.getByTestId("intermediate-steps")).toHaveCount(0);
+  await expect(page.getByText(visibleAnchor.text)).toHaveCount(0);
 
   await scrollChatViewportToBottom(page);
-  await expect(page.getByTestId("intermediate-steps")).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: /Intermediate steps|中间过程/ }).first(),
+  ).toHaveAttribute("data-state", "closed");
 });
 
-test("automatic intermediate collapse stays pinned without a transient jump", async ({ page }) => {
+test("completed intermediate steps collapse until explicitly reopened", async ({ page }) => {
   await openApp(page);
   const threadId = "e2e-pinned-collapse-thread";
   const agentLines = Array.from(
@@ -1108,19 +1224,22 @@ test("automatic intermediate collapse stays pinned without a transient jump", as
 
   await expect(page.getByText("pinned collapse line 120")).toBeVisible();
   await scrollChatViewportToBottom(page);
-  await startBottomDistanceTracking(page);
   await completeTurnWithFinalAgentMessage(page, {
     agentItemId: "agent-pinned-collapse",
     finalItemId: "agent-pinned-collapse-final",
     finalText: "final answer after pinned collapse",
   });
 
-  await expect(page.getByTestId("intermediate-steps")).toBeHidden();
-  await waitForAnimationFrames(page, 4);
-  expect(Math.max(...(await stopFrameTracking(page)))).toBeLessThanOrEqual(2);
+  const toggle = page.getByRole("button", { name: /Intermediate steps|中间过程/ }).first();
+  await expect(toggle).toHaveAttribute("data-state", "closed");
+  await expect(page.getByTestId("intermediate-steps")).toHaveCount(0);
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("data-state", "open");
+  await expect(page.getByTestId("intermediate-steps")).toBeVisible();
 });
 
-test("manually expanded completed intermediate steps stay open after returning to bottom", async ({
+test("completed intermediate steps can be collapsed and reopened after returning to bottom", async ({
   page,
 }) => {
   await openApp(page);
@@ -1169,6 +1288,15 @@ test("manually expanded completed intermediate steps stay open after returning t
 
   const toggle = page.getByRole("button", { name: /中间过程/ }).first();
   await expect(toggle).toHaveAttribute("data-state", "closed");
+  await expect(page.getByTestId("intermediate-steps")).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("data-state", "open");
+  await expect(page.getByTestId("intermediate-steps")).toBeVisible();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("data-state", "closed");
+  await expect(page.getByTestId("intermediate-steps")).toHaveCount(0);
+
   await toggle.click();
   await expect(toggle).toHaveAttribute("data-state", "open");
   await expect(page.getByTestId("intermediate-steps")).toBeVisible();

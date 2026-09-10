@@ -14,6 +14,7 @@ import {
 } from "../sidebar-utils";
 import type { PinnedThreadRecord, ProjectRecord } from "../sidebar-types";
 import { firstNonEmptyString } from "~~/shared/utils/strings";
+import { sidebarOverviewForThread } from "@/utils/thread-sidebar-summary";
 
 export function useSidebarTree(longPressTriggered: Ref<boolean>) {
   const store = useGatewayCatalogStore();
@@ -156,6 +157,27 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     return unviewedCompletedThreadKeys.value.includes(threadKey(hostId, threadId));
   }
 
+  function threadActivityOverview(hostId: number, threadId: string) {
+    const summary = summariesByKey.value[threadKey(hostId, threadId)];
+    return summary === undefined
+      ? null
+      : sidebarOverviewForThread({
+          goalObjective: summary.goalObjective,
+          goalStatus: summary.goalStatus,
+          currentOperation: summary.currentOperation,
+          turnSummary: summary.turnSummary,
+          lastUserInput: summary.lastUserInput,
+          aiGoalSummary: summary.aiGoalSummary,
+          aiTurnSummary: summary.aiTurnSummary,
+          aiCurrentTask: summary.aiCurrentTask,
+          aiLastUserInput: summary.aiLastUserInput,
+        });
+  }
+
+  function threadStorageBytes(hostId: number, threadId: string) {
+    return summariesByKey.value[threadKey(hostId, threadId)]?.threadBytes;
+  }
+
   function pinnedRuntimeStatus(thread: PinnedThreadRecord) {
     const key = pinnedThreadKey(thread);
     if (openingPinnedThreadKey.value === key) {
@@ -232,6 +254,8 @@ export function useSidebarTree(longPressTriggered: Ref<boolean>) {
     startThreadInProject,
     threadRuntimeStatus,
     threadCompletionAttention,
+    threadActivityOverview,
+    threadStorageBytes,
     pinnedRuntimeStatus,
     pinnedCompletionAttention,
   };

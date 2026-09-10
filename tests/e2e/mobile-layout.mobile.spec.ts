@@ -75,10 +75,15 @@ test("uses the mobile layout with hidden sidebar and usable composer shell", asy
 
   await page.getByTestId("mobile-sidebar-toggle").click();
   await expect(page.getByTestId("settings-toggle")).toBeVisible();
+  const sidebarSheet = page.locator('[data-slot="sheet-content"][data-side="left"]');
+  const sidebarBox = await sidebarSheet.boundingBox();
+  expect(sidebarBox).not.toBeNull();
+  expect(sidebarBox!.width).toBeGreaterThanOrEqual((await page.evaluate(() => innerWidth)) - 1);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("settings-toggle")).toBeHidden();
 
   await expect(page.getByTestId("chat-scroll-area")).toBeVisible();
+  await expect(page.getByTestId("gateway-build-version")).toHaveText("Gateway unknown");
   await expect(page.getByTestId("codex-usage-badge")).toHaveText("73%");
   await expect(page.getByTestId("codex-usage-badge")).toHaveAttribute("aria-label", /73%/);
   await expect(page.getByTestId("decrease-chat-text-size")).toBeVisible();
@@ -296,7 +301,13 @@ test("recalls the latest request above active intermediate work", async ({ page 
   await expect(userMessage).toBeVisible();
   await expect(page.getByTestId("active-prompt-recall")).toHaveCount(0);
   await expect(intermediateToggle).toBeVisible();
+  await expect(intermediateToggle).toHaveAttribute("data-state", "open");
+  await expect(page.getByTestId("intermediate-steps-working")).toBeVisible();
+  await intermediateToggle.click();
   await expect(intermediateToggle).toHaveAttribute("data-state", "closed");
+  await expect(page.getByTestId("intermediate-steps-working")).toHaveCount(0);
+  await intermediateToggle.click();
+  await expect(intermediateToggle).toHaveAttribute("data-state", "open");
   await expect(page.getByTestId("intermediate-steps-working")).toBeVisible();
   await expect(page.getByTestId("stop-turn-button")).toBeHidden();
   await expect(page.getByTestId("send-turn-button")).toBeVisible();

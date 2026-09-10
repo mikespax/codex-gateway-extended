@@ -9,11 +9,14 @@ import { ScrollArea } from "@codex-gateway/ui/scroll-area";
 import DeferredCollapsibleContent from "@/components/common/DeferredCollapsibleContent.vue";
 import MarkdownContent from "@/components/common/MarkdownContent.vue";
 import StaticJsonCodeBlock from "@/components/common/StaticJsonCodeBlock.vue";
+import ThreadImageReferences from "@/components/thread/attachments/ThreadImageReferences.vue";
 import { isItemInProgress } from "@/utils/thread-items";
 import { presentToolCall } from "./tool-call-presenters";
 
 const props = defineProps<{
   item: ThreadHistoryItem;
+  hostId: number | null;
+  showInlineImages?: boolean;
 }>();
 const { t } = useI18n();
 const presentation = computed(() => presentToolCall(props.item, t));
@@ -34,6 +37,12 @@ const detailSections = computed(() => presentation.value.details);
       <Badge v-if="item.success === true" variant="outline">{{ t("app.completed") }}</Badge>
       <Badge v-else-if="item.success === false" variant="destructive">{{ t("app.failed") }}</Badge>
     </div>
+    <ThreadImageReferences
+      :item="item"
+      :host-id="hostId"
+      :show="props.showInlineImages === true"
+      class="mt-2"
+    />
     <Collapsible
       v-if="detailSections.length"
       v-slot="{ open }"

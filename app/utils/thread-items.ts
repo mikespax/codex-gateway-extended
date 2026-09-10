@@ -3,13 +3,14 @@ import { recordFromUnknown } from "~~/shared/utils/records";
 
 export function threadItemText(item: ThreadHistoryItem) {
   if (item.type === "userMessage") {
-    return (Array.isArray(item.content) ? item.content : [])
+    const content = (Array.isArray(item.content) ? item.content : [])
       .map((part) => {
         const record = recordFromUnknown(part);
         return textValue(record?.text) || textValue(record?.content);
       })
       .filter(Boolean)
       .join("\n");
+    return content || textValue(item.text);
   }
   if (item.type === "agentMessage" || item.type === "plan") {
     return textValue(item.text);

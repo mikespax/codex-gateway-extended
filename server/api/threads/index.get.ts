@@ -14,32 +14,53 @@ import { threadSnapshotStore } from "../../utils/gateway/state/thread-snapshots"
 import { remoteFiles, threadStorage } from "../../utils/gateway/infra/host-services";
 import { withAllThreadSources } from "../../utils/gateway/protocol/thread-list";
 import { threadProjectDiscovery } from "../../utils/gateway/runtime/thread-project-discovery";
-import type { AppServerThread, GatewayThread, ProjectRecord } from "~~/shared/types";
+import type {
+  AppServerThread,
+  GatewayThread,
+  ProjectDirectoryAvailability,
+  ProjectRecord,
+} from "~~/shared/types";
 import type { HostWithSecret } from "../../utils/gateway/infra/ssh/ssh-types";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 import { gatewayThreadFromAppServer } from "../../utils/gateway/protocol/gateway-thread";
+import { HOT_THREAD_LIST_LIMIT } from "~~/shared/config";
+
+const PROJECT_DIRECTORY_AVAILABILITY_TTL_MS = 60_000;
+interface ProjectDirectoryAvailabilityCacheEntry {
+  fingerprint: string;
+  updatedAt: number;
+  value: Record<number, ProjectDirectoryAvailability>;
+}
+
+const projectDirectoryAvailabilityCache = new Map<string, ProjectDirectoryAvailabilityCacheEntry>();
+const pendingProjectDirectoryAvailability = new Map<string, Promise<void>>();
 
 export default defineGatewayEventHandler(async (event) => {
   const query = await getValidatedQuery(event, (body) => threadListSchema.parse(body));
   const host = requireRecord(hostStore.getWithSecret(query.hostId), "Host not found");
   const userId = event.context.auth?.user.id;
+  const searchTerm = trimmedOrNull(query.searchTerm);
+  const historicalLookup = searchTerm !== null;
+  const effectiveLimit = historicalLookup
+    ? query.limit
+    : Math.min(query.limit, HOT_THREAD_LIST_LIMIT);
   const discoveryGeneration =
     userId === undefined ? null : threadProjectDiscovery.captureGeneration(userId, host.id);
   setGatewayRequestLogContext(event, "threads/list", {
     ...hostLogContext(host),
     projectId: query.projectId ?? null,
     cwd: query.cwd ?? null,
-    limit: query.limit,
+    limit: effectiveLimit,
     cursor: query.cursor ?? null,
-    searchTerm: query.searchTerm ?? null,
+    searchTerm: searchTerm ?? null,
     useRemoteStateIndexOnly: query.useRemoteStateIndexOnly ?? false,
   });
 
   const listParams = withAllThreadSources({
-    limit: query.limit,
+    limit: effectiveLimit,
     cursor: trimmedOrNull(query.cursor),
     cwd: trimmedOrNull(query.cwd) ?? undefined,
-    searchTerm: trimmedOrNull(query.searchTerm) ?? undefined,
+    searchTerm: searchTerm ?? undefined,
     useStateDbOnly: query.useRemoteStateIndexOnly ?? false,
   });
   const page = await threadBroker.listThreads(host, listParams);
@@ -65,20 +86,18 @@ export default defineGatewayEventHandler(async (event) => {
     threadSnapshotStore.listForHost(host.id).map((record) => record.snapshot.thread),
     indexedThreads,
     projects,
-    query.searchTerm ?? null,
+    searchTerm,
   );
   let threadsWithStorage = gatewayThreads;
-  try {
-    const sizes = await threadStorage.scan(host, gatewayThreads);
-    threadsWithStorage = gatewayThreads.map((thread) => ({
-      ...thread,
-      threadBytes: sizes.get(thread.id) ?? null,
-    }));
-  } catch {
-    // Storage is advisory. A missing rollout, unsupported remote utility, or SSH outage must not
-    // hide otherwise authoritative threads from the list.
-  }
-  const projectDirectoryAvailability = await inspectProjectAvailability(host, projects);
+  const cachedSizes = threadStorage.cached(host, gatewayThreads);
+  threadsWithStorage = gatewayThreads.map((thread) => ({
+    ...thread,
+    threadBytes: cachedSizes.get(thread.id) ?? null,
+  }));
+  // Storage is advisory and must never delay an authoritative thread list. Refresh uncached
+  // values in the background; the next sidebar refresh will pick them up.
+  void threadStorage.scan(host, gatewayThreads).catch(() => undefined);
+  const projectDirectoryAvailability = projectDirectoryAvailabilityForList(userId, host, projects);
   return {
     ...page,
     data: threadsWithStorage,
@@ -113,18 +132,56 @@ async function inspectProjectAvailability(
   }
 }
 
+function projectDirectoryAvailabilityForList(
+  userId: number | undefined,
+  host: HostWithSecret,
+  projects: Array<{ id: number; remotePath: string }>,
+) {
+  const key = `${userId ?? "anonymous"}:${host.id}`;
+  const fingerprint = projects
+    .map((project) => `${project.id}:${project.remotePath}`)
+    .sort()
+    .join("|");
+  const cached = projectDirectoryAvailabilityCache.get(key);
+  const cacheIsFresh =
+    cached !== undefined &&
+    cached.fingerprint === fingerprint &&
+    Date.now() - cached.updatedAt < PROJECT_DIRECTORY_AVAILABILITY_TTL_MS;
+  if (!cacheIsFresh && pendingProjectDirectoryAvailability.get(key) === undefined) {
+    const pending = inspectProjectAvailability(host, projects)
+      .then((availability) => {
+        projectDirectoryAvailabilityCache.set(key, {
+          fingerprint,
+          updatedAt: Date.now(),
+          value: availability,
+        });
+      })
+      .catch((error: unknown) => {
+        console.warn("[gateway] background project directory inspection failed", {
+          hostId: host.id,
+          hostName: host.name,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        if (pendingProjectDirectoryAvailability.get(key) === pending) {
+          pendingProjectDirectoryAvailability.delete(key);
+        }
+      });
+    pendingProjectDirectoryAvailability.set(key, pending);
+  }
+  return cached?.fingerprint === fingerprint ? cached.value : {};
+}
+
 function shouldDiscoverHostProjects(query: {
   projectId?: number | null;
   cwd?: string | null;
   searchTerm?: string | null;
   cursor?: string | null;
 }) {
-  return (
-    (query.projectId === null || query.projectId === undefined) &&
-    trimmedOrNull(query.cwd) === null &&
-    trimmedOrNull(query.searchTerm) === null &&
-    trimmedOrNull(query.cursor) === null
-  );
+  // Historical project discovery is an explicit lookup operation. Normal sidebar refreshes only
+  // index their bounded hot page; walking every older cursor competes with foreground thread RPCs.
+  return trimmedOrNull(query.searchTerm) !== null;
 }
 
 function gatewayThreadsForList(

@@ -5,8 +5,11 @@ import { threadSnapshotStore } from "../state/thread-snapshots";
 import { threadBroker } from "./broker";
 import { runtimeLog } from "./runtime-log";
 import { activeMainThreadMonitor } from "./active-main-thread-monitor";
+import { currentGatewayUserId } from "../state/memory";
 
 export const RUNNING_THREAD_STALE_MS = 90_000;
+const STALE_SCAN_FAILURE_BACKOFF_MS = 5 * 60_000;
+const staleScanRetryAfter = new Map<string, number>();
 
 interface RefreshRunningThreadsInput {
   host: HostRecord;
@@ -39,8 +42,16 @@ export async function refreshRunningThreadsForHost({
   let failed = 0;
   const client = await threadBroker.getHostClient(host);
   for (const candidate of candidates) {
+    // A foreground controller already owns the live subscription and receives the authoritative
+    // status events. Do not add a metadata read on the same Host RPC channel while the browser is
+    // opening or using the thread; that redundant read is especially expensive for legacy
+    // rollouts on a slow worker.
+    if (reason === "stale-scan" && threadBroker.hasController(host.id, candidate.threadId)) {
+      continue;
+    }
     try {
       const result = await threadBroker.refreshThreadRuntimeStatus(host, candidate.threadId);
+      clearStaleScanBackoff(host.id, candidate.threadId);
       if (result.status === "running") {
         await activeMainThreadMonitor.observeKnownActiveThread(
           {
@@ -54,6 +65,12 @@ export async function refreshRunningThreadsForHost({
       refreshed += 1;
     } catch (error) {
       failed += 1;
+      if (reason === "stale-scan") {
+        staleScanRetryAfter.set(
+          staleScanKey(host.id, candidate.threadId),
+          Date.now() + STALE_SCAN_FAILURE_BACKOFF_MS,
+        );
+      }
       runtimeLog("running thread state refresh failed", {
         hostId: host.id,
         threadId: candidate.threadId,
@@ -94,8 +111,36 @@ function runningThreadCandidates(hostId: number, options: { staleOnly: boolean; 
       if (!options.staleOnly) {
         return true;
       }
+      // The selected/previewed thread has a controller-backed subscription. Its status is already
+      // projected from live events, so a stale-scan read would only compete with the foreground
+      // open on the shared RPC connection.
+      if (threadBroker.hasController(hostId, candidate.threadId)) {
+        return false;
+      }
+      if (staleScanIsBackedOff(hostId, candidate.threadId, now)) {
+        return false;
+      }
       return now - candidate.latestActivityAt >= options.staleMs;
     });
+}
+
+function staleScanIsBackedOff(hostId: number, threadId: string, now: number) {
+  const key = staleScanKey(hostId, threadId);
+  const retryAfter = staleScanRetryAfter.get(key);
+  if (retryAfter === undefined) return false;
+  if (retryAfter <= now) {
+    staleScanRetryAfter.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function clearStaleScanBackoff(hostId: number, threadId: string) {
+  staleScanRetryAfter.delete(staleScanKey(hostId, threadId));
+}
+
+function staleScanKey(hostId: number, threadId: string) {
+  return `${currentGatewayUserId() ?? "anonymous"}:${hostId}:${threadId}`;
 }
 
 function latestActivityAt(hostId: number, threadId: string, snapshotUpdatedAt: string) {

@@ -15,10 +15,25 @@ let requestGeneration = 0;
 
 const primaryWindow = computed(() => usage.value?.primary ?? usage.value?.secondary ?? null);
 const remainingPercent = computed(() => primaryWindow.value?.remainingPercent ?? null);
+const monthlyPaybackLabel = computed(() => {
+  const month = usage.value?.thisMonth;
+  if (month === undefined) return null;
+  const work = formatUsd(month.apiEquivalentCostMicros);
+  if (month.subscriptionPriceMicros === null || month.paybackRatio === null) {
+    return t("app.codexUsageMonthlyWork", { work });
+  }
+  return t("app.codexUsageMonthlyPayback", {
+    work,
+    plan: formatUsd(month.subscriptionPriceMicros),
+    ratio: month.paybackRatio.toFixed(2),
+  });
+});
 const accessibleLabel = computed(() =>
   remainingPercent.value === null
     ? t("app.codexUsageUnavailable")
-    : t("app.codexUsageAvailable", { percent: remainingPercent.value }),
+    : [t("app.codexUsageAvailable", { percent: remainingPercent.value }), monthlyPaybackLabel.value]
+        .filter((value): value is string => value !== null)
+        .join(" · "),
 );
 const toneClass = computed(() => {
   const percent = remainingPercent.value;
@@ -55,6 +70,11 @@ watch(
 );
 
 onBeforeUnmount(pause);
+
+function formatUsd(micros: number | null) {
+  if (micros === null) return t("app.codexUsageUnavailable");
+  return `$${(micros / 1_000_000).toFixed(2)}`;
+}
 </script>
 
 <template>

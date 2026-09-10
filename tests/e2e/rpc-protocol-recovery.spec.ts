@@ -8,6 +8,14 @@ const responseSchema = z.object({
   errorMessage: z.string(),
 });
 
+const notificationScopeSchema = z.object({
+  concurrentCalls: z.number(),
+  concurrentResults: z.array(z.boolean()),
+  failedCalls: z.number(),
+  failedResults: z.array(z.boolean()),
+  retryResult: z.boolean(),
+});
+
 test("invalid app-server envelopes close the RPC generation and reject pending requests", async ({
   page,
 }) => {
@@ -37,4 +45,20 @@ test("resolved plan questions do not publish a stale notification after scope in
     (value) => z.object({ publishedKeys: z.array(z.string()) }).parse(value),
   );
   expect(body).toEqual({ publishedKeys: [] });
+});
+
+test("notification scope reads are coalesced and failed scopes back off", async ({ page }) => {
+  await openApp(page);
+  const body = await authenticatedFetch(
+    page,
+    { url: "/api/e2e/notification-scope-coalescing", method: "POST" },
+    (value) => notificationScopeSchema.parse(value),
+  );
+  expect(body).toEqual({
+    concurrentCalls: 1,
+    concurrentResults: [true, true],
+    failedCalls: 1,
+    failedResults: [false, false],
+    retryResult: false,
+  });
 });
