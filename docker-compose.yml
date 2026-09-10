@@ -26,7 +26,7 @@ services:
       CODEX_GATEWAY_DB_PATH: /data/codex-gateway.db
       CODEX_GATEWAY_CONFIG_SECRET: ${CODEX_GATEWAY_CONFIG_SECRET:?CODEX_GATEWAY_CONFIG_SECRET is required}
       CODEX_GATEWAY_CLOUDFLARE_ACCESS_ISSUER: ${CODEX_GATEWAY_CLOUDFLARE_ACCESS_ISSUER:-https://little-silence-98d8.cloudflareaccess.com}
-      CODEX_GATEWAY_CLOUDFLARE_ACCESS_AUDIENCE: ${CODEX_GATEWAY_CLOUDFLARE_ACCESS_AUDIENCE:-}
+      CODEX_GATEWAY_CLOUDFLARE_ACCESS_AUDIENCE: ${CODEX_GATEWAY_CLOUDFLARE_ACCESS_AUDIENCE:-782b4210adbfcb653a3320ec361ad1c92406bede3a3be6e1bea03fba5b6b8f4d}
     volumes:
       - ./data:/data
     # Keep liveness probes side-effect free. Nitro owns periodic GC so probe retries or Docker
