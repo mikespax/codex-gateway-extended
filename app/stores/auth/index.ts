@@ -7,6 +7,8 @@ export const useAuthStore = defineStore("auth", () => {
   const token = ref("");
   const username = ref("");
   const initialized = ref(false);
+  const externalAuthPending = ref(false);
+  const externalAuthAttempted = ref(false);
   const sessionEpoch = ref(0);
   const storedToken = useLocalStorage<string | null>(AUTH_STORAGE_KEY, null);
   const storedUsername = useLocalStorage<string | null>(`${AUTH_STORAGE_KEY}:username`, null);
@@ -42,11 +44,41 @@ export const useAuthStore = defineStore("auth", () => {
     return session;
   }
 
+  async function bootstrapCloudflare() {
+    if (!import.meta.client || externalAuthPending.value) return;
+    hydrate();
+    externalAuthPending.value = true;
+    try {
+      if (token.value !== "") {
+        await $fetch("/api/auth/me", {
+          headers: { authorization: `Bearer ${token.value}` },
+        });
+        return;
+      }
+      const session = await $fetch<{
+        token: string;
+        expiresAt: string;
+        user: { id: number; username: string };
+      }>("/api/auth/cloudflare");
+      setEphemeralSession(session.token, session.user.username);
+    } catch {
+      if (token.value !== "") clearSession();
+    } finally {
+      externalAuthAttempted.value = true;
+      externalAuthPending.value = false;
+    }
+  }
+
   function setSession(nextToken: string, nextUsername: string) {
     replaceSession(nextToken, nextUsername);
     initialized.value = true;
     storedToken.value = nextToken;
     storedUsername.value = nextUsername;
+  }
+
+  function setEphemeralSession(nextToken: string, nextUsername: string) {
+    replaceSession(nextToken, nextUsername);
+    initialized.value = true;
   }
 
   async function logout() {
@@ -86,9 +118,12 @@ export const useAuthStore = defineStore("auth", () => {
     token,
     username,
     initialized,
+    externalAuthPending,
+    externalAuthAttempted,
     sessionEpoch,
     isAuthenticated,
     hydrate,
+    bootstrapCloudflare,
     login,
     logout,
     isCurrentSession,

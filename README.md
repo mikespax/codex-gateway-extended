@@ -259,6 +259,8 @@ Environment variables:
 | ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------- |
 | `CODEX_GATEWAY_CONFIG_SECRET` | Yes in production | Stable secret used to encrypt stored host/project/thread config.                                        |
 | `CODEX_GATEWAY_DB_PATH`       | No                | SQLite database path. Defaults to the app data path; Docker uses `/data/codex-gateway.db`.              |
+| `CODEX_GATEWAY_CLOUDFLARE_ACCESS_ISSUER` | Cloudflare browser auth | HTTPS Cloudflare Access team issuer used to verify the origin JWT.                                      |
+| `CODEX_GATEWAY_CLOUDFLARE_ACCESS_AUDIENCE` | Optional | If set, require this Cloudflare Access application audience claim.                                      |
 | `CODEX_GATEWAY_SUBSCRIPTION_PRICE_USD` | No | Optional manual subscription price used only for the monthly API-equivalent payback comparison. |
 | `CODEX_GATEWAY_USAGE_PERIOD_START` | No | Optional ISO timestamp for the current billing period; defaults to the first day of the UTC month. |
 | `HOST`                        | No                | Nuxt listen host. Docker uses `0.0.0.0`.                                                                |

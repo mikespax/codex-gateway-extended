@@ -3,6 +3,7 @@ import { authenticateEvent } from "../utils/gateway/auth/context";
 
 const PUBLIC_API_PATHS = new Set([
   "/api/auth/login",
+  "/api/auth/cloudflare",
   "/api/realtime",
   "/api/supervisor/thread",
   "/api/supervisor/thread/events",

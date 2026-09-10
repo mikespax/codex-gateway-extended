@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { Toaster } from "@codex-gateway/ui/sonner";
 import LoginScreen from "@/components/auth/LoginScreen.vue";
+import CloudflareAccessRequired from "@/components/auth/CloudflareAccessRequired.vue";
 import { useAuthStore } from "@/stores/auth";
 import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { refreshGatewayClient } from "@/stores/gateway-bootstrap/refresh";
@@ -22,8 +23,10 @@ const device = useDevice();
 const { initializing } = storeToRefs(bootstrap);
 const { selectedThreadId } = storeToRefs(navigation);
 const { currentThread } = storeToRefs(threadView);
-const { initialized, isAuthenticated, token } = storeToRefs(auth);
+const { initialized, isAuthenticated, token, externalAuthPending, externalAuthAttempted } =
+  storeToRefs(auth);
 const mounted = ref(false);
+const cloudflareHost = ref(false);
 const compactViewport = ref(false);
 let activeSessionToken = "";
 let compactViewportQuery: MediaQueryList | null = null;
@@ -71,7 +74,10 @@ onMounted(() => {
   compactViewport.value = compactViewportQuery.matches;
   compactViewportQuery.addEventListener("change", updateCompactViewport);
   mounted.value = true;
+  cloudflareHost.value =
+    window.location.hostname === "spax.co" || window.location.hostname.endsWith(".spax.co");
   auth.hydrate();
+  void auth.bootstrapCloudflare();
 });
 
 function updateCompactViewport(event: MediaQueryListEvent) {
@@ -114,7 +120,17 @@ watch(
     >ready</span
   >
   <Toaster rich-colors position="top-right" />
-  <LoginScreen v-if="mounted && !isAuthenticated" />
+  <div
+    v-if="mounted && !isAuthenticated && externalAuthPending"
+    class="flex min-h-dvh items-center justify-center bg-canvas px-4 text-sm text-ink-muted"
+    data-testid="auth-loading"
+  >
+    {{ cloudflareHost ? "Connecting to Cloudflare Access…" : "Loading Gateway…" }}
+  </div>
+  <CloudflareAccessRequired
+    v-else-if="mounted && cloudflareHost && externalAuthAttempted && !isAuthenticated"
+  />
+  <LoginScreen v-else-if="mounted && !isAuthenticated" />
   <NuxtPage v-else-if="isUsagePage" />
   <NuxtLayout v-else :name="layoutName" />
 </template>

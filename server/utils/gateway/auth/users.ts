@@ -58,11 +58,21 @@ export const userStore = {
       : null;
   },
 
-  async login(username: string, password: string): Promise<AuthSession | null> {
-    const user = this.findByUsername(username);
-    if (!user || !user.isActive || !verifyPassword(password, user.passwordHash)) {
+  findSingleActiveUser(): AuthenticatedUser | null {
+    const rows = gatewayDatabase()
+      .prepare("SELECT id, username FROM users WHERE is_active = 1 ORDER BY id ASC LIMIT 2")
+      .all();
+    if (rows.length !== 1 || rows[0] === undefined) {
       return null;
     }
+    const row = rows[0];
+    return {
+      id: Number(row.id),
+      username: String(row.username),
+    };
+  },
+
+  createSession(user: AuthenticatedUser): AuthSession {
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000).toISOString();
     const now = new Date().toISOString();
@@ -71,11 +81,15 @@ export const userStore = {
         "INSERT INTO sessions (user_id, token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
       )
       .run(user.id, hashToken(token), expiresAt, now, now);
-    return {
-      token,
-      expiresAt,
-      user: { id: user.id, username: user.username },
-    };
+    return { token, expiresAt, user };
+  },
+
+  async login(username: string, password: string): Promise<AuthSession | null> {
+    const user = this.findByUsername(username);
+    if (!user || !user.isActive || !verifyPassword(password, user.passwordHash)) {
+      return null;
+    }
+    return this.createSession({ id: user.id, username: user.username });
   },
 
   authenticateToken(token: string): AuthenticatedUser | null {
