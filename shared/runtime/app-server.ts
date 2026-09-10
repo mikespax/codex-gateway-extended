@@ -268,7 +268,9 @@ export const appServerThreadSchema = z
       .nullable(),
     turns: z.array(threadTurnSchema),
   })
-  .strict();
+  // Codex app-server adds optional top-level metadata across CLI releases. Keep the required
+  // thread contract validated while preserving forward compatibility with newer runtimes.
+  .loose();
 
 export const gatewayThreadSchema = appServerThreadSchema.omit({ projectId: true }).extend({
   appServerProjectId: z.string().nullable(),
