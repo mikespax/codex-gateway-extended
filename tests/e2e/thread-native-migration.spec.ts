@@ -24,6 +24,7 @@ const migrationResultSchema = z
       hostId: z.number().int().positive(),
       threadId: z.string().min(1),
       rolloutPath: z.string().startsWith("/"),
+      cwd: z.string().startsWith("/"),
       requestedCwd: z.string().startsWith("/"),
       historyMode: z.enum(["legacy", "paginated"]),
       turnCount: z.number().int().positive(),
