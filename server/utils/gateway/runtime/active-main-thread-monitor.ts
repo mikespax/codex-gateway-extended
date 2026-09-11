@@ -24,6 +24,7 @@ const RECOVERY_CONCURRENCY = 2;
 const RECOVERY_TIMEOUT_MS = 15_000;
 const UNSUBSCRIBE_TIMEOUT_MS = 5_000;
 const MISSING_ROLLOUT_COOLDOWN_MS = 5 * 60_000;
+const ACTIVE_WRITER_COOLDOWN_MS = 30_000;
 const MONITOR_RELEASE_GRACE_MS = 90_000;
 
 type ControllerLookup = (threadId: string) => boolean;
@@ -275,6 +276,9 @@ class ActiveMainThreadMonitor {
       }
     } catch (error) {
       if (isMissingRolloutError(error)) this.suppressUnavailable(hostKey, threadId);
+      else if (isActiveWriterError(error)) {
+        this.suppressUnavailable(hostKey, threadId, ACTIVE_WRITER_COOLDOWN_MS);
+      }
       runtimeLog("pinned thread status probe failed", {
         hostId: context.host.id,
         hostName: context.host.name,
@@ -338,6 +342,9 @@ class ActiveMainThreadMonitor {
       );
     } catch (error) {
       if (isMissingRolloutError(error)) this.suppressUnavailable(hostKey, threadId);
+      else if (isActiveWriterError(error)) {
+        this.suppressUnavailable(hostKey, threadId, ACTIVE_WRITER_COOLDOWN_MS);
+      }
       throw error;
     }
     const resultRecord = recordFromUnknown(result);
@@ -425,11 +432,12 @@ class ActiveMainThreadMonitor {
     return false;
   }
 
-  private suppressUnavailable(hostKey: string, threadId: string) {
-    this.unavailableUntil.set(
-      this.unavailableKey(hostKey, threadId),
-      Date.now() + MISSING_ROLLOUT_COOLDOWN_MS,
-    );
+  private suppressUnavailable(
+    hostKey: string,
+    threadId: string,
+    cooldownMs = MISSING_ROLLOUT_COOLDOWN_MS,
+  ) {
+    this.unavailableUntil.set(this.unavailableKey(hostKey, threadId), Date.now() + cooldownMs);
   }
 
   private clearUnavailable(hostId: number, threadId: string) {
@@ -543,6 +551,10 @@ function messageFromError(error: unknown) {
 function isMissingRolloutError(error: unknown) {
   const message = messageFromError(error).toLowerCase();
   return message.includes("no rollout found") || message.includes("rollout not found");
+}
+
+function isActiveWriterError(error: unknown) {
+  return messageFromError(error).toLowerCase().includes("already has an active writer");
 }
 
 export const activeMainThreadMonitor = new ActiveMainThreadMonitor();
