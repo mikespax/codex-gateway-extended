@@ -43,11 +43,11 @@ export const notificationSettingsSchema = z
 
 export const providerRoutingSettingsSchema = z
   .object({
-    mode: z.enum(["openai", "hybrid", "deepseek"]).default("hybrid"),
+    mode: z.enum(["openai", "hybrid", "deepseek"]).default("openai"),
     useOpenRouterCreditsFirst: z.boolean().default(true),
   })
   .strict()
-  .default({ mode: "hybrid", useOpenRouterCreditsFirst: true });
+  .default({ mode: "openai", useOpenRouterCreditsFirst: true });
 
 export const gatewayConfigSchema = z
   .object({

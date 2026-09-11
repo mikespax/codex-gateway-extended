@@ -18,7 +18,8 @@ export const DEFAULT_BARK_SERVER_URL = "https://api.day.app";
 export const DEFAULT_BARK_GROUP = "Codex Gateway";
 
 export const DEFAULT_PROVIDER_ROUTING: ProviderRoutingSettings = {
-  mode: "hybrid",
+  // Provider routing is opt-in until the target Codex hosts have been provisioned and tested.
+  mode: "openai",
   useOpenRouterCreditsFirst: true,
 };
 
@@ -27,7 +28,7 @@ export function normalizeProviderRouting(
 ): ProviderRoutingSettings {
   const mode = settings?.mode;
   return {
-    mode: mode === "openai" || mode === "deepseek" || mode === "hybrid" ? mode : "hybrid",
+    mode: mode === "openai" || mode === "deepseek" || mode === "hybrid" ? mode : "openai",
     useOpenRouterCreditsFirst: settings?.useOpenRouterCreditsFirst !== false,
   };
 }
