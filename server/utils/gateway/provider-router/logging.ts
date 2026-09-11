@@ -24,7 +24,11 @@ export function observeProviderFailure(
     // healthy until the same turn reaches a clean terminal completion. This avoids reporting
     // DeepSeek as available when the turn immediately fails due to missing credentials/model
     // configuration, which is especially important for fail-closed DeepSeek-only mode.
-    if (method === "turn/completed" && status === "completed" && error === undefined) {
+    if (
+      method === "turn/completed" &&
+      status === "completed" &&
+      (error === undefined || error === null)
+    ) {
       updateProviderRouterState((state) => {
         state.directDeepseek = "available";
       });

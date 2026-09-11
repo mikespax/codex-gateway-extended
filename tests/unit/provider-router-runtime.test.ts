@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { recordFromUnknown } from "../../shared/utils/records";
 import { routeProvider } from "../../server/utils/gateway/provider-router/matrix";
+import { providerStartParameters } from "../../server/utils/gateway/provider-router/policy";
 import { classifyOpenAiFailure } from "../../server/utils/gateway/provider-router/quota";
 import {
   getProviderRouterState,
@@ -56,6 +57,12 @@ void test("all 288 mode, pricing, quota, credit, image and transport combination
               cases++;
             }
   assert.equal(cases, 288);
+});
+
+void test("OpenAI routing replaces a stale DeepSeek model with the configured OpenAI default", () => {
+  const parameters = providerStartParameters("deepseek-flash");
+  assert.equal(parameters.modelProvider, "openai");
+  assert.equal(parameters.model, "gpt-5.6-luna");
 });
 
 void test("exhausted credit survives process reload and clears only on explicit CLI recheck", () => {
@@ -160,7 +167,7 @@ void test("DeepSeek health is unknown until a turn completes and cannot remain f
     assert.equal(getProviderRouterState().directDeepseek, "unknown");
 
     observeProviderFailure(4, "deepseek-test", "turn/completed", {
-      turn: { status: "completed" },
+      turn: { status: "completed", error: null },
     });
     assert.equal(getProviderRouterState().directDeepseek, "available");
 

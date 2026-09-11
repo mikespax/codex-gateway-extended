@@ -8,6 +8,11 @@ import { getProviderRouterState, updateProviderRouterState } from "./state";
 import type { ProviderDecision, ProviderRouterStatus } from "./types";
 import { routeProvider } from "./matrix";
 
+// A provider switch must replace a thread's previous DeepSeek model. Passing null to
+// thread/resume leaves the app-server's existing model in place, which makes an OpenAI return
+// turn fail with "model is not supported when using Codex with a ChatGPT account".
+export const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
+
 export function chooseProvider(input: TurnStartInput, now = new Date()): ProviderDecision {
   let runtime = getProviderRouterState();
   if (
@@ -34,10 +39,7 @@ export function chooseProvider(input: TurnStartInput, now = new Date()): Provide
     openrouter: runtime.openrouter,
     period,
     containsImages,
-    requestedOpenAiModel:
-      input.model !== null && input.model !== undefined && !input.model.startsWith("deepseek")
-        ? input.model
-        : null,
+    requestedOpenAiModel: openAiModelForInput(input.model),
     openRouterTextModel: openrouterModelForImage(false),
     openRouterVisionModel: openrouterModelForImage(true),
     directTextModel: deepseekModelForImage(false),
@@ -105,8 +107,7 @@ export function providerStartParameters(model: string | null | undefined, now = 
   if (status.mode === "hybrid") {
     return {
       modelProvider: "openai" as const,
-      model:
-        model !== null && model !== undefined && !model.startsWith("deepseek") ? model : undefined,
+      model: openAiModelForInput(model),
     };
   }
   const transport =
@@ -117,11 +118,15 @@ export function providerStartParameters(model: string | null | undefined, now = 
     modelProvider: transport === "openai" ? "openai" : transport,
     model:
       transport === "openai"
-        ? model !== null && model !== undefined && !model.startsWith("deepseek")
-          ? model
-          : undefined
+        ? openAiModelForInput(model)
         : transport === "openrouter"
           ? (status.model ?? undefined)
           : deepseekModelForImage(false),
   };
+}
+
+function openAiModelForInput(model: string | null | undefined) {
+  return model !== null && model !== undefined && model !== "" && !model.startsWith("deepseek")
+    ? model
+    : DEFAULT_OPENAI_MODEL;
 }
