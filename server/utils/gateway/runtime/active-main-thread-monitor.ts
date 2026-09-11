@@ -24,6 +24,7 @@ const RECOVERY_CONCURRENCY = 2;
 const RECOVERY_TIMEOUT_MS = 15_000;
 const UNSUBSCRIBE_TIMEOUT_MS = 5_000;
 const MISSING_ROLLOUT_COOLDOWN_MS = 5 * 60_000;
+const MONITOR_RELEASE_GRACE_MS = 90_000;
 
 type ControllerLookup = (threadId: string) => boolean;
 
@@ -50,6 +51,7 @@ class ActiveMainThreadMonitor {
   private readonly pendingByThread = new Map<string, Promise<void>>();
   private readonly pendingRecoveries = new Map<string, Promise<void>>();
   private readonly pendingPinnedRecoveries = new Map<string, Promise<void>>();
+  private readonly pendingReleases = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly unavailableUntil = new Map<string, number>();
   private readonly generations = new Map<string, number>();
 
@@ -112,6 +114,7 @@ class ActiveMainThreadMonitor {
     if (threadId === null) return;
 
     if (method === "thread/started") {
+      this.cancelPendingRelease(this.hostKey(context.host.id), threadId);
       this.clearUnavailable(context.host.id, threadId);
       const thread = startedThread(message);
       if (thread !== null) threadMetadataStore.record(context.host.id, null, thread);
@@ -126,12 +129,17 @@ class ActiveMainThreadMonitor {
     if (method === "thread/status/changed") {
       const params = recordFromUnknown(recordFromUnknown(message)?.params);
       if (runtimeStatusFromAppThreadStatus(params?.status) === "running") {
+        this.cancelPendingRelease(this.hostKey(context.host.id), threadId);
         // Existing idle threads do not emit thread/started for every new turn. The global status
         // broadcast is therefore the ownership signal for work started by VS Code and other
         // app-server clients; resume validates main-vs-subagent before retaining the subscription.
         this.scheduleObservation(context, threadId, "active main thread status subscribe failed");
       } else {
-        void this.releaseThread(context, threadId);
+        // App-server status broadcasts can briefly report a non-running state while a turn is
+        // waiting for a client/approval or while persistence catches up. Keep the monitor lease
+        // through that transition; a later active event cancels the release. A genuinely idle
+        // thread is still unsubscribed after the bounded grace period.
+        this.scheduleRelease(context, threadId);
       }
       return;
     }
@@ -196,6 +204,12 @@ class ActiveMainThreadMonitor {
     }
     for (const key of this.unavailableUntil.keys()) {
       if (key.startsWith(threadPrefix)) this.unavailableUntil.delete(key);
+    }
+    for (const [pendingKey, timer] of this.pendingReleases) {
+      if (pendingKey.startsWith(threadPrefix)) {
+        clearTimeout(timer);
+        this.pendingReleases.delete(pendingKey);
+      }
     }
   }
 
@@ -273,6 +287,7 @@ class ActiveMainThreadMonitor {
   private async observeThread(context: MonitorContext, threadId: string) {
     if (context.hasController(threadId)) return;
     const hostKey = this.hostKey(context.host.id);
+    this.cancelPendingRelease(hostKey, threadId);
     if (this.isUnavailable(hostKey, threadId)) return;
     const observed = this.observedByHost.get(hostKey);
     if (observed?.has(threadId) === true) return;
@@ -350,6 +365,26 @@ class ActiveMainThreadMonitor {
     if (!context.hasController(threadId)) {
       await this.unsubscribe(context, threadId);
     }
+  }
+
+  private scheduleRelease(context: MonitorContext, threadId: string) {
+    const hostKey = this.hostKey(context.host.id);
+    const key = `${hostKey}:${threadId}`;
+    if (this.pendingReleases.has(key)) return;
+    const timer = setTimeout(() => {
+      if (this.pendingReleases.get(key) !== timer) return;
+      this.pendingReleases.delete(key);
+      void this.releaseThread(context, threadId);
+    }, MONITOR_RELEASE_GRACE_MS);
+    this.pendingReleases.set(key, timer);
+  }
+
+  private cancelPendingRelease(hostKey: string, threadId: string) {
+    const key = `${hostKey}:${threadId}`;
+    const timer = this.pendingReleases.get(key);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.pendingReleases.delete(key);
   }
 
   private async unsubscribe(context: MonitorContext, threadId: string) {
