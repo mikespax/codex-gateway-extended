@@ -88,7 +88,7 @@ export function providerRouterStatus(now = new Date()): ProviderRouterStatus {
     nextPricingTransitionAt: nextPricingTransition(now).toISOString(),
     openaiQuota: runtime.openaiQuota,
     openrouter: runtime.openrouter,
-    directDeepseek: "available",
+    directDeepseek: runtime.directDeepseek,
     reason: matrix.reason,
   };
 }

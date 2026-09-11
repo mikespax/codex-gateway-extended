@@ -65,6 +65,11 @@ export class ThreadTurnCommandService {
             }
           });
         }
+        if (decision.transport === "deepseek") {
+          updateProviderRouterState((state) => {
+            state.directDeepseek = "available";
+          });
+        }
         logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
           hostId: host.id,
           status: "200",
@@ -73,6 +78,11 @@ export class ThreadTurnCommandService {
         return result;
       } catch (error) {
         const classification = classifyOpenAiFailure(error);
+        if (decision.transport === "deepseek" && isDeepSeekTransportFailure(error)) {
+          updateProviderRouterState((state) => {
+            state.directDeepseek = "unavailable";
+          });
+        }
         if (
           decision.effectiveProvider === "openai" &&
           decision.mode === "hybrid" &&
@@ -98,6 +108,11 @@ export class ThreadTurnCommandService {
             input,
             decision,
           );
+          if (decision.transport === "deepseek") {
+            updateProviderRouterState((state) => {
+              state.directDeepseek = "available";
+            });
+          }
           logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
             hostId: host.id,
             status: "200",
@@ -154,6 +169,9 @@ export class ThreadTurnCommandService {
               input,
               decision,
             );
+            updateProviderRouterState((state) => {
+              state.directDeepseek = "available";
+            });
             logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
               hostId: host.id,
               status: "200",
@@ -164,6 +182,11 @@ export class ThreadTurnCommandService {
             });
             return result;
           } catch (directError) {
+            if (isDeepSeekTransportFailure(directError)) {
+              updateProviderRouterState((state) => {
+                state.directDeepseek = "unavailable";
+              });
+            }
             if (decision.mode === "hybrid" && shouldFallbackToOpenAi(directError, controller)) {
               const fallbackDecision = hybridOpenAiFallbackDecision(input, decision);
               await controller.ensureProvider("openai", fallbackDecision.model);

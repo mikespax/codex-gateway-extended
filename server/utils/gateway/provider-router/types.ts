@@ -26,6 +26,7 @@ export interface ProviderRouterRuntimeState {
   openaiQuotaDetectedAt: string | null;
   openaiQuotaResetAt: string | null;
   openaiQuotaReason: string | null;
+  directDeepseek: ProviderAvailability;
   openrouter: ProviderAvailability;
   openrouterLastError: string | null;
   openrouterModels: {

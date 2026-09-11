@@ -9,6 +9,7 @@ const DEFAULT_STATE: ProviderRouterRuntimeState = {
   openaiQuotaDetectedAt: null,
   openaiQuotaResetAt: null,
   openaiQuotaReason: null,
+  directDeepseek: "unknown",
   openrouter: "unknown",
   openrouterLastError: null,
   openrouterModels: { text: null, vision: null, fetchedAt: null },
