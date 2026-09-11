@@ -10,6 +10,7 @@ const statePath =
 const defaults = {
   settings: { mode: "hybrid", useOpenRouterCreditsFirst: true },
   openaiQuota: "available",
+  directDeepseek: "unknown",
   openrouter: "unknown",
   openrouterModels: { text: null, vision: null, fetchedAt: null },
 };
@@ -85,9 +86,15 @@ function printStatus(state) {
   console.log(`Next change:         ${next.toISOString()}`);
   console.log(`Use OpenRouter first: ${state.settings.useOpenRouterCreditsFirst ? "on" : "off"}`);
   console.log(`OpenAI quota:         ${state.openaiQuota || "unknown"}`);
+  console.log(`Direct DeepSeek:      ${availabilityLabel(state.directDeepseek)}`);
   console.log(`OpenRouter:           ${state.openrouter || "unknown"}`);
-  console.log("Direct DeepSeek:     configured (remote environment)");
   console.log(`State file:           ${statePath}`);
+}
+
+function availabilityLabel(value) {
+  if (value === "available") return "available (verified)";
+  if (value === "unavailable") return "unavailable (verified)";
+  return "unknown (not verified)";
 }
 
 function chooseRoute(state, period) {
