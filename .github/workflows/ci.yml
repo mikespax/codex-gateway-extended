@@ -20,18 +20,17 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4.4.0
-
-      - name: Set up Node
-        uses: actions/setup-node@v5
+      - name: Set up Node and pnpm
+        uses: pnpm/setup@v2
         with:
-          node-version: 24
-          cache: pnpm
+          version: 11.17.0
+          runtime: node@24.11.0
+          cache: true
+          install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
