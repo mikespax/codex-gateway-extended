@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   PERSISTENT_THREAD_CACHE_TTL_MS,
   PERSISTENT_THREAD_SNAPSHOT_MAX_BYTES,
+  PERSISTENT_THREAD_SNAPSHOT_TOTAL_MAX_BYTES,
   SERVER_THREAD_CACHE_LIMIT,
 } from "~~/shared/config";
 import { appServerThreadSchema } from "~~/shared/runtime/app-server";
@@ -99,7 +100,15 @@ export function writePersistentThreadSnapshot(
   const nowIso = now.toISOString();
   const expiresAt = new Date(now.getTime() + PERSISTENT_THREAD_CACHE_TTL_MS).toISOString();
   const payload = { version: 1 as const, snapshot };
-  if (Buffer.byteLength(JSON.stringify(payload), "utf8") > PERSISTENT_THREAD_SNAPSHOT_MAX_BYTES) {
+  const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+  if (payloadBytes > PERSISTENT_THREAD_SNAPSHOT_MAX_BYTES) {
+    console.warn("[gateway] persistent thread snapshot skipped: too large", {
+      userId,
+      hostId,
+      threadId,
+      payloadBytes,
+      maxBytes: PERSISTENT_THREAD_SNAPSHOT_MAX_BYTES,
+    });
     deletePersistentThreadSnapshot(userId, hostId, threadId);
     return;
   }
@@ -139,6 +148,34 @@ export function writePersistentThreadSnapshot(
          LIMIT -1 OFFSET ?
        )`,
     ).run(userId, SERVER_THREAD_CACHE_LIMIT);
+
+    // The row-count cap protects lookup behavior; this byte cap protects the disposable SQLite
+    // cache from becoming a second large state store when several long threads are opened.
+    while (true) {
+      const total = Number(
+        (
+          db
+            .prepare(
+              `SELECT COALESCE(SUM(length(encrypted_snapshot_json)), 0) AS total
+               FROM thread_snapshot_cache
+               WHERE user_id = ?`,
+            )
+            .get(userId) as { total?: number } | undefined
+        )?.total ?? 0,
+      );
+      if (total <= PERSISTENT_THREAD_SNAPSHOT_TOTAL_MAX_BYTES) break;
+      const oldest = db
+        .prepare(
+          `SELECT rowid
+           FROM thread_snapshot_cache
+           WHERE user_id = ?
+           ORDER BY last_accessed_at ASC
+           LIMIT 1`,
+        )
+        .get(userId) as { rowid?: number } | undefined;
+      if (oldest?.rowid === undefined) break;
+      db.prepare("DELETE FROM thread_snapshot_cache WHERE rowid = ?").run(oldest.rowid);
+    }
   });
 }
 

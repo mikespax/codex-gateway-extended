@@ -12,7 +12,11 @@ export const SERVER_TURN_CACHE_LIMIT = 50;
 export const SERVER_THREAD_CACHE_LIMIT = 100;
 export const CLIENT_THREAD_CACHE_LIMIT = 24;
 export const PERSISTENT_THREAD_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
-export const PERSISTENT_THREAD_SNAPSHOT_MAX_BYTES = 2 * 1_024 * 1_024;
+// Long-lived Codex turns can contain large tool-output blocks even when the Gateway only retains
+// the first page. Keep the recovery cache useful for those threads, while bounding the total
+// disposable cache below the container's memory limit.
+export const PERSISTENT_THREAD_SNAPSHOT_MAX_BYTES = 16 * 1_024 * 1_024;
+export const PERSISTENT_THREAD_SNAPSHOT_TOTAL_MAX_BYTES = 256 * 1_024 * 1_024;
 export const PERSISTENT_THREAD_VIEW_MAX_BYTES = 2 * 1_024 * 1_024;
 export const DEFAULT_BARK_SERVER_URL = "https://api.day.app";
 export const DEFAULT_BARK_GROUP = "Codex Gateway";
