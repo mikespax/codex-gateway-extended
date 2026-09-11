@@ -77,7 +77,9 @@ onMounted(() => {
   cloudflareHost.value =
     window.location.hostname === "spax.co" || window.location.hostname.endsWith(".spax.co");
   auth.hydrate();
-  void auth.bootstrapCloudflare();
+  if (cloudflareHost.value) {
+    void auth.bootstrapCloudflare();
+  }
 });
 
 function updateCompactViewport(event: MediaQueryListEvent) {

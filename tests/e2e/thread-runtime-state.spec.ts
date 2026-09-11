@@ -506,7 +506,7 @@ test("accepted send stays with its original thread after immediate navigation", 
     .toBe(true);
   expect(
     await page.evaluate(
-      ({ nextThreadId, acceptedTurnId }) => {
+      ({ originalThreadId, nextThreadId, acceptedTurnId }) => {
         const driver = window.__codexGatewayE2e;
         if (!driver) throw new Error("Gateway E2E driver is unavailable");
         return {

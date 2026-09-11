@@ -774,6 +774,31 @@ test("switching threads discards stale virtual row measurements", async ({ page 
   await openApp(page);
   const longThreadId = "e2e-long-measure-thread";
   const shortThreadId = "e2e-short-measure-thread";
+  await installRealtimeThreadSnapshotMock(page, {
+    responseDelayMs: 120,
+    snapshots: {
+      [longThreadId]: {
+        thread: { id: longThreadId, name: "Long Measure" },
+        history: {
+          thread: {
+            id: longThreadId,
+            turns: buildMeasuredTurns(longThreadId, 80),
+          },
+        },
+        projectId: 1,
+      },
+      [shortThreadId]: {
+        thread: { id: shortThreadId, name: "Short Measure" },
+        history: {
+          thread: {
+            id: shortThreadId,
+            turns: buildMeasuredTurns(shortThreadId, 3),
+          },
+        },
+        projectId: 1,
+      },
+    },
+  });
   await seedGatewayThread(page, {
     hostId: 1,
     projectId: 1,

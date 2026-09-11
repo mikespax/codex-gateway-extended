@@ -16,6 +16,9 @@ WORKDIR /workspace/codex-gateway
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY patches ./patches
 COPY packages ./packages
+# The root package's preinstall guard runs before the full source tree is copied.
+# Keep this small, source-independent guard available in the dependency layer.
+COPY scripts/check-node-version.mjs ./scripts/check-node-version.mjs
 RUN --mount=type=cache,id=codex-gateway-e2e-pnpm-store,target=/pnpm/store \
   pnpm install --frozen-lockfile
 
