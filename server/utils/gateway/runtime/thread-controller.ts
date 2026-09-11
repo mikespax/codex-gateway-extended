@@ -89,7 +89,14 @@ export class ThreadController {
       message,
       createThreadNotificationResolvers(this.client, this.threadId),
     );
-    if (method === "turn/started") this.onMaterialized?.();
+    if (method === "turn/started") {
+      // thread/start creates a logical identity and an in-memory snapshot before the first
+      // rollout exists. Keep the fresh-thread guard active until the app-server confirms the
+      // first turn has materialized that rollout; otherwise a scoped first-turn lease can issue
+      // thread/resume and receive "no rollout found".
+      this.freshThread = false;
+      this.onMaterialized?.();
+    }
   }
 
   handleStderr(text: string) {
@@ -114,7 +121,7 @@ export class ThreadController {
       // attached; it has no ThreadResumeResponse. Existing threads must still resume once when
       // their materialized snapshot does not yet contain model/effort. This is the app-server's
       // authoritative settings read, not a presentation fallback.
-      if (this.freshThread && this.subscribed && this.getOpenSnapshot() === null) return;
+      if (this.freshThread && this.subscribed) return;
       if (this.subscribed && this.getOpenSnapshot()?.threadSettings != null) return;
       // Fresh threads never enter this branch: ControllerRegistry keeps thread/start's implicit
       // subscription under a bootstrap owner until turn/started. Calling thread/resume before that
@@ -170,7 +177,7 @@ export class ThreadController {
   }
 
   isFreshThread() {
-    return this.freshThread && this.getOpenSnapshot() === null;
+    return this.freshThread;
   }
 
   /**
@@ -184,7 +191,7 @@ export class ThreadController {
       const snapshot = this.getOpenSnapshot();
       // thread/start has already selected the provider for a brand-new identity. There is no
       // rollout for thread/resume to load yet; the first turn materializes it under that choice.
-      if (snapshot === null && this.subscribed && this.freshThread) {
+      if (this.subscribed && this.freshThread) {
         return { provider, model, changed: false };
       }
       const currentProvider = snapshot?.thread.modelProvider ?? null;
