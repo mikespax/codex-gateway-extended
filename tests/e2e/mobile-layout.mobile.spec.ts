@@ -410,7 +410,7 @@ test("shows effort and compact context usage without mobile approval controls", 
     },
   });
 
-  await expect(page.getByTestId("model-select")).toContainText("GPT-5.6 Luna");
+  await expect(page.getByTestId("model-select")).toContainText("Luna");
   await expect(page.getByTestId("model-select")).toContainText("Medium");
   await expect(page.getByText("完全访问", { exact: true })).toBeHidden();
   const contextMeter = page.getByTestId("context-usage-meter");
@@ -429,13 +429,13 @@ test("shows effort and compact context usage without mobile approval controls", 
   await expect(page.getByTestId("model-option-gpt-5.6-luna")).toBeVisible();
   await page.getByTestId("model-option-gpt-5.6-sol").click();
   await expect(page.getByTestId("model-select")).toContainText("Medium");
-  await expect(page.getByTestId("model-select")).toContainText("GPT-5.6 Luna");
+  await expect(page.getByTestId("model-select")).toContainText("Luna");
   expect(settingsUpdates).toHaveLength(0);
 
   await page.getByTestId("model-selector-cancel").click();
   await expect(page.getByTestId("model-selector-dialog")).toBeHidden();
   await expect(page.getByTestId("model-select")).toContainText("Medium");
-  await expect(page.getByTestId("model-select")).toContainText("GPT-5.6 Luna");
+  await expect(page.getByTestId("model-select")).toContainText("Luna");
 
   await page.getByTestId("model-select").click();
   await page.getByTestId("reasoning-effort-select").click();

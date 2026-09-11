@@ -100,7 +100,7 @@ export function useThreadSettingsControls() {
   );
   const activeModelLabel = computed(() => {
     const model = activeModelRecord.value;
-    const rawLabel = firstNonEmptyString([model?.model, model?.displayName, activeModel.value]);
+    const rawLabel = firstNonEmptyString([model?.displayName, model?.model, activeModel.value]);
     return compactModelLabel(rawLabel) ?? t("app.model");
   });
   const activeEffortValue = computed(() => {
