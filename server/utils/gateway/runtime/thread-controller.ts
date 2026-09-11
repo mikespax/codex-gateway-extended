@@ -204,6 +204,13 @@ export class ThreadController {
           "Provider change is waiting for the current turn to finish; retry after the thread is idle.",
         );
       }
+      // OpenAI's ChatGPT-backed provider rejects a mixed-provider rollout after a DeepSeek
+      // continuation unless the official app-server compacts the history first. Do this only at
+      // an idle DeepSeek -> OpenAI boundary; it is never run during an active turn and the
+      // app-server remains the sole authority for the resulting summary.
+      if (currentProvider === "deepseek" && provider === "openai") {
+        await this.compactHistoryForProviderSwitch();
+      }
       if (this.subscribed) {
         await this.client.request("thread/unsubscribe", { threadId: this.threadId }, 15_000);
         this.subscribed = false;
@@ -239,6 +246,39 @@ export class ThreadController {
         });
       }
       return { provider, model: resumed.model, changed: true };
+    });
+  }
+
+  private async compactHistoryForProviderSwitch() {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        finish(new Error("Codex history compaction timed out before the provider switch"));
+      }, 120_000);
+      const unsubscribe = threadRuntimeEvents.subscribe(this.host.id, this.threadId, (event) => {
+        if (event.method !== "turn/completed") return;
+        const params = recordFromUnknown(event.payload.params);
+        const turn = recordFromUnknown(params?.turn);
+        const status = recordFromUnknown(turn)?.status;
+        if (status === "completed") {
+          finish();
+        } else {
+          finish(
+            new Error(`Codex history compaction ended with status ${String(status ?? "unknown")}`),
+          );
+        }
+      });
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        unsubscribe();
+        if (error === undefined) resolve();
+        else reject(error);
+      };
+      void this.client
+        .request("thread/compact/start", { threadId: this.threadId }, 15_000)
+        .catch((error) => finish(error instanceof Error ? error : new Error(String(error))));
     });
   }
 
