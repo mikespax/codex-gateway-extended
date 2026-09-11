@@ -21,7 +21,7 @@ export interface SidebarActivityTarget {
   path: string | null;
 }
 
-/** Keep unselected rows current without opening a full thread view for every conversation. */
+/** Keep Active rows current without opening a full thread view for every conversation. */
 export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>) {
   const activity = useGatewayThreadActivityStore();
   const nextRefreshAt = new Map<string, number>();
@@ -59,6 +59,7 @@ export function useSidebarActivityRefresh(targets: Ref<SidebarActivityTarget[]>)
               cursor: null,
               limit: SIDEBAR_TURN_LIMIT,
               sortDirection: "desc",
+              itemsView: "summary",
             });
             activity.ingestSidebarTurns(
               target.hostId,

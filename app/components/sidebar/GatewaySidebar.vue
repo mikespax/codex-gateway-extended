@@ -135,9 +135,9 @@ const sidebarActivityTargets = computed(() => {
   const seen = new Set<string>();
   const result: SidebarActivityTarget[] = [];
   // Recent is an index, not a second live-monitoring surface. Its rows are populated from the
-  // bounded catalog and only load turns/storage/summaries when the user opens one. Active and
-  // Inactive pins remain the continuously refreshed operational view.
-  for (const thread of pinnedThreads.value) {
+  // bounded catalog and only load turns/storage/summaries when the user opens one. Active pins
+  // remain the continuously refreshed operational view; Inactive pins are on-demand.
+  for (const thread of activePinnedThreads.value) {
     const threadId = String(thread.threadId);
     const key = `${thread.hostId}:${threadId}`;
     if (seen.has(key)) continue;

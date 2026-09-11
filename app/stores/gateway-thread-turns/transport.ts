@@ -105,6 +105,7 @@ export function requestThreadTurnsPage(input: {
   cursor: string | null;
   limit: number;
   sortDirection: "asc" | "desc";
+  itemsView?: "summary" | "full";
 }) {
   return useGatewayRealtimeStore().request(
     (requestId) => ({
@@ -115,6 +116,7 @@ export function requestThreadTurnsPage(input: {
       cursor: input.cursor,
       limit: input.limit,
       sortDirection: input.sortDirection,
+      ...(input.itemsView === undefined ? {} : { itemsView: input.itemsView }),
     }),
     expectThreadTurnsPage,
   );

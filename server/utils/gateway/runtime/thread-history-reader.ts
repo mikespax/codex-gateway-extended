@@ -9,6 +9,7 @@ export interface ThreadTurnsListInput {
   cursor?: string | null;
   limit?: number;
   sortDirection?: "asc" | "desc";
+  itemsView?: "summary" | "full";
 }
 
 export class ThreadHistoryReader {
@@ -25,7 +26,7 @@ export class ThreadHistoryReader {
         sortDirection: input.sortDirection ?? "desc",
         // Older-page requests are explicit user navigation. Preserve the existing full-content
         // behavior there; cold opens use the bounded summary page in ThreadController instead.
-        itemsView: "full",
+        itemsView: input.itemsView ?? "full",
       },
       120_000,
       parseTurnsPage,

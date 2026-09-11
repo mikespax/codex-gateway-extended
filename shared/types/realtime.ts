@@ -86,6 +86,7 @@ export type RealtimeClientMessage =
       cursor?: string | null;
       limit?: number;
       sortDirection?: "asc" | "desc";
+      itemsView?: "summary" | "full";
     }
   | {
       type: "thread.start";

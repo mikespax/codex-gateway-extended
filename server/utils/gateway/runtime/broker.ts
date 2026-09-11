@@ -130,9 +130,18 @@ class ThreadBroker {
       cursor?: string | null;
       limit?: number;
       sortDirection?: "asc" | "desc";
+      itemsView?: "summary" | "full";
     },
   ) {
     return this.historyReader.listThreadTurns(host, threadId, params);
+  }
+
+  async withScopedSubscription<T>(
+    host: HostRecord,
+    threadId: string,
+    operation: (controller: Awaited<ThreadSubscriptionLease["ready"]>) => Promise<T>,
+  ) {
+    return this.registry.withScopedSubscription(host, threadId, operation);
   }
 
   async getHostClient(host: HostRecord) {

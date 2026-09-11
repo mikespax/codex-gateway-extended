@@ -99,6 +99,7 @@ export const realtimeClientMessageSchema: z.ZodType<RealtimeClientMessage> = z.d
         cursor: nullableString,
         limit: positiveId.optional(),
         sortDirection: z.enum(["asc", "desc"]).optional(),
+        itemsView: z.enum(["summary", "full"]).optional(),
       })
       .strict(),
     z

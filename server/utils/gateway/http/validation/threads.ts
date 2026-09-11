@@ -70,6 +70,7 @@ export const threadTurnsListSchema = z.object({
   cursor: z.string().trim().nullable().optional(),
   limit: z.coerce.number().int().min(1).max(MAX_TURN_PAGE_LIMIT).default(OLDER_TURN_PAGE_LIMIT),
   sortDirection: z.enum(["asc", "desc"]).default("desc"),
+  itemsView: z.enum(["summary", "full"]).default("full"),
 });
 
 export const threadRenameSchema = z.object({

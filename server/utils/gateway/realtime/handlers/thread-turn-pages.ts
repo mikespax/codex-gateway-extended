@@ -11,11 +11,14 @@ export async function loadThreadTurns(
 ) {
   const input = threadTurnsListSchema.parse(request);
   const host = requireRecord(hostStore.getWithSecret(input.hostId), "Host not found");
-  const result = await threadBroker.listThreadTurns(host, input.threadId, {
-    cursor: input.cursor ?? null,
-    limit: input.limit,
-    sortDirection: input.sortDirection,
-  });
+  const result = await threadBroker.withScopedSubscription(host, input.threadId, () =>
+    threadBroker.listThreadTurns(host, input.threadId, {
+      cursor: input.cursor ?? null,
+      limit: input.limit,
+      sortDirection: input.sortDirection,
+      itemsView: input.itemsView,
+    }),
+  );
   sendRealtimePeerMessage(peer, {
     type: "thread.turns.page",
     requestId: request.requestId,
