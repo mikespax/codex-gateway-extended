@@ -20,6 +20,10 @@ function codexPathBootstrap(options: { requireCodex: boolean }) {
     // app-server needs more than that to index an established session store.
     'if [ "$(ulimit -Sn 2>/dev/null || echo 0)" -lt 8192 ] 2>/dev/null; then ulimit -n 8192 2>/dev/null || true; fi;',
     modernNodePathBootstrap(),
+    // Provider credentials are provisioned out-of-band in a mode-0600 file on the remote Codex
+    // host. Load them only into the app-server/proxy process environment; never echo or persist
+    // them in Gateway logs, shell snapshots, or the browser.
+    'codex_gateway_provider_dir="${CODEX_PROVIDER_SECRETS_DIR:-${CODEX_HOME:-$HOME/.codex}/provider-secrets}"; for codex_gateway_provider_file in "$codex_gateway_provider_dir/deepseek.env" "$codex_gateway_provider_dir/openrouter.env"; do if [ -r "$codex_gateway_provider_file" ]; then set -a; . "$codex_gateway_provider_file"; set +a; fi; done;',
     'CODEX_BIN="$(command -v codex 2>/dev/null || true)";',
     'if [ -z "$CODEX_BIN" ] && [ -x "${CODEX_INSTALL_DIR:-$HOME/.local/bin}/codex" ]; then CODEX_BIN="${CODEX_INSTALL_DIR:-$HOME/.local/bin}/codex"; fi;',
     'if [ -z "$CODEX_BIN" ] && command -v npm >/dev/null 2>&1; then NPM_PREFIX="$(npm prefix -g 2>/dev/null || true)"; if [ -n "$NPM_PREFIX" ] && [ -x "$NPM_PREFIX/bin/codex" ]; then CODEX_BIN="$NPM_PREFIX/bin/codex"; fi; fi;',
