@@ -3,6 +3,7 @@ import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayFileWorkspaceStore } from "@/stores/file-workspace";
 import { useGatewayThreadActivityStore } from "@/stores/gateway-thread-activity";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { gatewayDomainEvents } from "../domain-events";
 import type { ThreadHistoryItem } from "~~/shared/types";
 import {
@@ -38,6 +39,9 @@ export function registerThreadProjectionSubscribers() {
     const activity = useGatewayThreadActivityStore();
     if (event.status === "running") activity.markTurnRunning(event.hostId, event.threadId);
     else activity.updateCurrentOperation(event.hostId, event.threadId, null);
+    if (event.status !== "running") {
+      void useGatewayThreadTurnsStore().flushQueuedTurn(event.hostId, event.threadId);
+    }
   });
   gatewayDomainEvents.on("terminal-process-detected", rememberActiveTerminalProcess);
   gatewayDomainEvents.on("terminal-process-completed", clearActiveTerminalProcess);

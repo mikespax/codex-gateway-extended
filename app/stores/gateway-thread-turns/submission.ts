@@ -37,7 +37,18 @@ import { requestTurnStart, requestTurnSteer } from "./transport";
 import type { Translate, TurnRequestResult } from "./types";
 import { captureSessionEpoch } from "@/utils/session-epoch";
 
-export async function sendTurn(t: Translate, text: string, options: ComposerTurnOptions = {}) {
+export type TurnDispatchMode = "auto" | "queue" | "steer" | "start";
+
+export interface TurnDispatchOptions {
+  mode?: TurnDispatchMode;
+}
+
+export async function sendTurn(
+  t: Translate,
+  text: string,
+  options: ComposerTurnOptions = {},
+  dispatch: TurnDispatchOptions = {},
+): Promise<boolean> {
   const sessionIsCurrent = captureSessionEpoch();
   const catalog = useGatewayCatalogStore();
   const gateway = useGatewayBootstrapStore();
@@ -49,7 +60,7 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
   const hostId = navigation.selectedHostId;
   const threadId = navigation.selectedThreadId;
   if (hostId === null || threadId === null) {
-    return;
+    return false;
   }
   const targetIsSelected = () =>
     navigation.selectedHostId === hostId && navigation.selectedThreadId === threadId;
@@ -71,12 +82,12 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
     // catalog. Treat the first submit as a readiness boundary instead of rejecting it and forcing
     // the user to send the same message again after hydration happens to finish.
     await navigation.refreshHostProjects(hostId);
-    if (!sessionIsCurrent()) return;
+    if (!sessionIsCurrent()) return false;
     project = resolveCurrentProject();
   }
   if (project === undefined) {
     gateway.setError(t("app.projectRequiredForFileReferences"), { hostId, threadId });
-    return;
+    return false;
   }
   const projectId = project.id;
   // Heal stale route/cache state so later actions cannot keep submitting a foreign host project.
@@ -86,7 +97,35 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
   }
   const cwd = project.remotePath;
   const runtime = runtimeStore.threadRuntimeProjection(hostId, threadId);
-  const steerTurnId = runtime.canSteer ? runtime.activeTurnId : null;
+  const dispatchMode = dispatch.mode ?? "auto";
+  const activeTurnId = runtime.canSteer ? runtime.activeTurnId : null;
+  // A queued item is dispatched only after the previous turn is terminal. If a status update races
+  // with that flush, leave the item in the local queue for the next terminal notification.
+  if (dispatchMode === "start" && activeTurnId !== null) return false;
+  const steerTurnId =
+    dispatchMode === "steer" || (dispatchMode === "auto" && activeTurnId !== null)
+      ? activeTurnId
+      : null;
+  if (dispatchMode === "queue" && activeTurnId !== null) {
+    try {
+      useGatewayThreadTurnsStore().queueTurn({
+        hostId,
+        projectId,
+        threadId,
+        cwd,
+        text,
+        options,
+      });
+      return true;
+    } catch (error: unknown) {
+      gateway.setError(error instanceof Error ? error.message : t("app.sendMessageFailed"), {
+        hostId,
+        projectId,
+        threadId,
+      });
+      return false;
+    }
+  }
   const shouldSteerActiveTurn = steerTurnId !== null;
   const clientUserMessageId = createClientUserMessageId(shouldSteerActiveTurn ? "steer" : "turn");
   if (!shouldSteerActiveTurn) {
@@ -144,7 +183,7 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
       { kind: requestKind, hostId, projectId, threadId, cwd, text, options },
       executeTurnRequest,
     );
-    if (!sessionIsCurrent()) return;
+    if (!sessionIsCurrent()) return false;
     applyAcceptedTurnResult(hostId, threadId, result, clientUserMessageId, optimisticContent);
     await promoteInactivePinnedThread(config, hostId, threadId);
     if (!shouldSteerActiveTurn) {
@@ -155,8 +194,9 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
         ...(options.approvalPolicy !== undefined ? { approvalPolicy: options.approvalPolicy } : {}),
       });
     }
+    return true;
   } catch (error: unknown) {
-    if (!sessionIsCurrent()) return;
+    if (!sessionIsCurrent()) return false;
     useGatewayThreadTurnsStore().clearRequest(hostId, threadId);
     gateway.setError(messageFromError(error, t("app.sendMessageFailed"), errorMessageLabels(t)), {
       hostId,
@@ -166,9 +206,42 @@ export async function sendTurn(t: Translate, text: string, options: ComposerTurn
     if (!shouldSteerActiveTurn) {
       runtimeStore.setThreadStatus(hostId, threadId, "completed");
     }
+    return false;
   } finally {
     if (sessionIsCurrent() && targetIsSelected()) views.loading = false;
   }
+}
+
+/** Dispatch the oldest browser-queued follow-up after the active turn reaches a terminal state. */
+export async function flushQueuedTurn(t: Translate, hostId: number, threadId: string) {
+  const turns = useGatewayThreadTurnsStore();
+  if (!turns.beginQueueFlush(hostId, threadId)) return false;
+  try {
+    const runtime = useGatewayThreadRuntimeStore().threadRuntimeProjection(hostId, threadId);
+    if (runtime.status === "running") return false;
+    const queued = turns.takeQueuedTurn(hostId, threadId);
+    if (queued === null) return false;
+    const accepted = await sendTurn(t, queued.text, queued.options, { mode: "start" });
+    if (!accepted) turns.prependQueuedTurn(queued);
+    return accepted;
+  } finally {
+    turns.endQueueFlush(hostId, threadId);
+  }
+}
+
+/** Send one editable queued item immediately through Codex's official steer path. */
+export async function steerQueuedTurn(
+  t: Translate,
+  hostId: number,
+  threadId: string,
+  queuedId: string,
+) {
+  const turns = useGatewayThreadTurnsStore();
+  const queued = turns.takeQueuedTurn(hostId, threadId, queuedId);
+  if (queued === null) return false;
+  const accepted = await sendTurn(t, queued.text, queued.options, { mode: "steer" });
+  if (!accepted) turns.prependQueuedTurn(queued);
+  return accepted;
 }
 
 /** A deliberate send reactivates an explicitly inactive pinned thread after acceptance. */

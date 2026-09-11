@@ -271,7 +271,10 @@ export async function sendSteerText(page: Page, marker: string) {
   await page
     .getByPlaceholder(/Ask for follow-up changes|输入后续修改要求/)
     .fill(`追加要求：${marker}`);
-  await page.getByTestId("send-turn-button").click();
+  // Keep this helper explicitly on the app-server steer path. The normal composer send action
+  // now queues an editable follow-up while a turn is active; real-time steer coverage should
+  // exercise the separate "Steer now" control instead.
+  await page.getByTestId("steer-turn-button").click();
 }
 
 export async function sendImageTurnThroughGateway(

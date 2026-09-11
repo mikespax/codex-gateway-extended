@@ -51,7 +51,7 @@ export function useComposerTurnSubmit(input: {
     await threadView.startThread(input.selectedTurnOptions());
   }
 
-  async function submitTurn() {
+  async function submitTurn(mode: "queue" | "steer" = "queue") {
     const text = input.turnText.value.trim();
     if (!text && !input.attachedFiles.value.length) return;
     if (planModeActive.value) {
@@ -66,8 +66,7 @@ export function useComposerTurnSubmit(input: {
       name,
     }));
     const collaborationMode = composer.selectedThreadSettings.collaborationMode ?? undefined;
-    input.clearDraft();
-    await threadTurns.sendTurn(
+    const accepted = await threadTurns.sendTurn(
       messageWithFileReferences(text, remoteFiles, input.fileReferencesLabel.value),
       {
         ...input.selectedTurnOptions(),
@@ -78,7 +77,13 @@ export function useComposerTurnSubmit(input: {
         files: remoteFiles,
         references,
       },
+      { mode },
     );
+    if (accepted) input.clearDraft();
+  }
+
+  async function steerTurnNow() {
+    await submitTurn("steer");
   }
 
   async function interruptTurn() {
@@ -116,6 +121,7 @@ export function useComposerTurnSubmit(input: {
     deactivatePlanMode,
     startNewThread,
     submitTurn,
+    steerTurnNow,
     interruptTurn,
   };
 }

@@ -18,6 +18,7 @@ export type {
   AppServerThreadStatus,
   AppServerTurn,
   ComposerTurnOptions,
+  QueuedTurn,
   FileReference,
   GatewayThread,
   ThreadGoal,

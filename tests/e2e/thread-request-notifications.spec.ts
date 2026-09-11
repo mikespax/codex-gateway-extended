@@ -341,6 +341,65 @@ test("app-server moderation notifications render a readable summary before raw d
   await expect(chatScrollArea.getByText("only visible after expanding details")).toBeVisible();
 });
 
+test("agent questions can be answered while the turn is waiting", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-user-input-thread";
+  await seedGatewayThread(page, {
+    hostId: 7,
+    projectId: 3,
+    threadId,
+    currentThread: { id: threadId, name: "User Input" },
+    status: "running",
+    history: {
+      thread: {
+        id: threadId,
+        turns: [
+          {
+            id: "turn-user-input",
+            status: "waitingForInput",
+            items: [
+              {
+                id: "request-user-input-42",
+                type: "requestUserInput",
+                status: "waitingForClient",
+                requestId: 42,
+                params: {
+                  questions: [
+                    {
+                      id: "runtime",
+                      header: "Runtime",
+                      question: "Where should this harmless test run?",
+                      options: [
+                        { label: "A1286", description: "Disposable test host" },
+                        { label: "Retina", description: "Local worker host" },
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  await installServerRequestResponderMock(page, { mode: "capture" });
+
+  const chatScrollArea = page.getByTestId("chat-scroll-area");
+  await expect(chatScrollArea.getByText("Where should this harmless test run?")).toBeVisible();
+  await chatScrollArea.getByRole("button", { name: "A1286" }).click();
+  await chatScrollArea.getByTestId("request-user-input-submit").click();
+
+  await expect
+    .poll(() => capturedServerRequestResponse(page))
+    .toMatchObject({
+      hostId: 7,
+      threadId,
+      serverRequestId: 42,
+      result: { answers: { runtime: { answers: ["A1286"] } } },
+    });
+});
+
 test("terminal wait notifications mention the command being watched", async ({ page }) => {
   await openApp(page);
   await seedGatewayThread(page, {

@@ -6,6 +6,7 @@ import type {
   ThreadGoal,
   ThreadRuntimeStatus,
   ThreadTokenUsageState,
+  QueuedTurn,
 } from "~~/shared/types";
 import type { ComposerAttachment } from "@/composables/composer/useComposerDraft";
 import type { ComposerFileReference } from "@/stores/gateway/types";
@@ -16,6 +17,7 @@ import ComposerModeStrip from "@/components/chat/composer/ComposerModeStrip.vue"
 import ComposerToolbar from "@/components/chat/composer/ComposerToolbar.vue";
 import SlashCommandMenu from "@/components/chat/composer/SlashCommandMenu.vue";
 import ComposerEditor from "@/components/chat/composer/ComposerEditor.vue";
+import QueuedTurnsPanel from "@/components/chat/composer/QueuedTurnsPanel.vue";
 
 const props = defineProps<{
   modelValue: string;
@@ -35,6 +37,7 @@ const props = defineProps<{
   selectedThreadId: string | null;
   selectedProjectId: number | null;
   selectedThreadTokenUsage: ThreadTokenUsageState | null;
+  queuedTurns: QueuedTurn[];
   models: ModelRecord[];
   loadingModels: boolean;
   activeModel: string;
@@ -50,6 +53,7 @@ const props = defineProps<{
   hasComposerInput: boolean;
   isThreadRunning: boolean;
   canInterruptTurn: boolean;
+  canSteerTurn: boolean;
   canStopTurn: boolean;
   canUsePrimaryAction: boolean;
   interruptingTurn: boolean;
@@ -76,6 +80,10 @@ const emit = defineEmits<{
   primaryAction: [];
   interruptTurn: [];
   applyModelEffort: [selection: { model: string; effort: ReasoningEffort; serviceTier: string }];
+  steerTurn: [];
+  editQueuedTurn: [queuedId: string, text: string];
+  removeQueuedTurn: [queuedId: string];
+  steerQueuedTurn: [queuedId: string];
 }>();
 
 const composerEditor = ref<InstanceType<typeof ComposerEditor> | null>(null);
@@ -213,6 +221,13 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
         @resume-goal="emit('resumeGoal')"
         @clear-goal="emit('clearGoal')"
       />
+      <QueuedTurnsPanel
+        :turns="queuedTurns"
+        :is-thread-running="isThreadRunning"
+        @edit="(queuedId, text) => emit('editQueuedTurn', queuedId, text)"
+        @remove="emit('removeQueuedTurn', $event)"
+        @steer="emit('steerQueuedTurn', $event)"
+      />
       <div
         data-testid="composer-surface"
         class="relative rounded-[1.35rem] border border-hairline bg-surface p-2 shadow-lg shadow-ink/10 transition-colors md:rounded-3xl md:p-[clamp(0.45rem,1vw,0.7rem)]"
@@ -301,6 +316,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           :has-composer-input="hasComposerInput"
           :is-thread-running="isThreadRunning"
           :can-interrupt-turn="canInterruptTurn"
+          :can-steer-turn="canSteerTurn"
           :can-stop-turn="canStopTurn"
           :can-use-primary-action="canUsePrimaryAction"
           :interrupting-turn="interruptingTurn"
@@ -309,6 +325,7 @@ function updateFileReferences(value: ComposerFileReference[], sourceScopeKey: st
           @attach="openAttachmentPicker"
           @primary-action="emit('primaryAction')"
           @interrupt-turn="emit('interruptTurn')"
+          @steer-turn="emit('steerTurn')"
           @apply-model-effort="emit('applyModelEffort', $event)"
         />
       </div>

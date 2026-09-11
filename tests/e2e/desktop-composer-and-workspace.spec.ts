@@ -57,6 +57,37 @@ test("desktop Enter still sends after the browser window is resized narrow", asy
   );
 });
 
+test("queues an active-turn follow-up and allows editing or removing it", async ({ page }) => {
+  await openApp(page);
+  const threadId = "editable-follow-up-queue";
+  await seedGatewayThread(page, {
+    projectId: 1,
+    threadId,
+    currentThread: { id: threadId, name: "Editable Follow-up Queue" },
+    status: "running",
+  });
+  await page.evaluate((threadId) => {
+    window.__codexGatewayE2e?.runtime.setThreadStatus(1, threadId, "running", {
+      turnId: "active-queue-turn",
+    });
+  }, threadId);
+
+  const composer = page.getByTestId("composer-input");
+  await composer.fill("queued before editing");
+  await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", "Queue message");
+  await page.getByTestId("send-turn-button").click();
+
+  await expect(page.getByTestId("queued-turns")).toBeVisible();
+  await expect(page.getByTestId("queued-turns")).toContainText("queued before editing");
+  await page.getByTestId("edit-queued-turn-button").click();
+  await page.getByTestId("queued-turn-editor").fill("edited queued follow-up");
+  await page.getByTestId("save-queued-edit").click();
+  await expect(page.getByTestId("queued-turns")).toContainText("edited queued follow-up");
+
+  await page.getByTestId("remove-queued-turn-button").click();
+  await expect(page.getByTestId("queued-turns")).toHaveCount(0);
+});
+
 test("keeps Files hidden until a file is explicitly opened and shows usage on desktop", async ({
   page,
 }) => {

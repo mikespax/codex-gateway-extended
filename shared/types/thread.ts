@@ -350,3 +350,15 @@ export interface ComposerTurnOptions {
   }>;
   references?: FileReference[];
 }
+
+/** A browser-owned follow-up that has not yet been handed to the Codex app-server. */
+export interface QueuedTurn {
+  id: string;
+  hostId: number;
+  projectId: number;
+  threadId: string;
+  cwd: string | null;
+  text: string;
+  options: ComposerTurnOptions;
+  createdAt: number;
+}

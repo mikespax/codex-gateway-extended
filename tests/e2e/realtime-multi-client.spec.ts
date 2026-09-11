@@ -36,7 +36,7 @@ test("fans out a real remote app-server thread to multiple browser clients acros
 
   const firstMarker = `E2E 第一轮 ${Date.now()}`;
   await page
-    .getByPlaceholder("输入后续修改要求")
+    .getByPlaceholder(/Ask for follow-up changes|输入后续修改要求/)
     .fill(
       [
         `请执行一个较长命令，然后最终用一句话回复：${firstMarker}`,

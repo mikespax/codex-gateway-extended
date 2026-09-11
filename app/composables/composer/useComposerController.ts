@@ -11,6 +11,7 @@ import { useGatewayBootstrapStore } from "@/stores/gateway-bootstrap";
 import { useGatewayComposerStore } from "@/stores/gateway-composer";
 import { useGatewayNavigationStore } from "@/stores/gateway-navigation";
 import { useGatewayThreadRuntimeStore } from "@/stores/gateway-thread-runtime";
+import { useGatewayThreadTurnsStore } from "@/stores/gateway-thread-turns";
 import { useGatewayThreadViewStore } from "@/stores/gateway-thread-view";
 import { latestThreadPlanItem, planItemSummary } from "@/utils/thread-plan";
 import { isThreadGoalOngoing } from "@/utils/thread-goal-display";
@@ -22,6 +23,7 @@ export function useComposerController() {
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
   const runtime = useGatewayThreadRuntimeStore();
+  const threadTurns = useGatewayThreadTurnsStore();
   const threadView = useGatewayThreadViewStore();
   const device = useDevice();
   const { t } = useI18n();
@@ -57,6 +59,11 @@ export function useComposerController() {
     selectedHostId.value !== null && selectedThreadId.value !== null
       ? runtime.threadRuntimeProjection(selectedHostId.value, selectedThreadId.value)
       : null,
+  );
+  const queuedTurns = computed(() =>
+    selectedHostId.value !== null && selectedThreadId.value !== null
+      ? threadTurns.queuedForThread(selectedHostId.value, selectedThreadId.value)
+      : [],
   );
   const isThreadRunning = computed(() => selectedRuntime.value?.canInterrupt === true);
   const composerInputEnabled = computed(
@@ -103,6 +110,9 @@ export function useComposerController() {
     () =>
       selectedThreadId.value !== null && isThreadRunning.value && !submit.hasComposerInput.value,
   );
+  const canSteerTurn = computed(
+    () => selectedThreadId.value !== null && isThreadRunning.value && submit.hasComposerInput.value,
+  );
   const canStopTurn = computed(() => selectedThreadId.value !== null && isThreadRunning.value);
   const canUsePrimaryAction = computed(() =>
     Boolean(
@@ -110,6 +120,7 @@ export function useComposerController() {
     ),
   );
   const sendButtonLabel = computed(() => {
+    if (submit.hasComposerInput.value && isThreadRunning.value) return t("app.queueMessage");
     if (submit.hasComposerInput.value) return t("app.send");
     if (isThreadRunning.value) return t("app.interruptTurn");
     if (selectedThreadStatus.value === "completed") return t("app.completed");
@@ -200,6 +211,27 @@ export function useComposerController() {
     void submitComposer();
   }
 
+  function editQueuedTurn(queuedId: string, text: string) {
+    if (selectedHostId.value === null || selectedThreadId.value === null) return false;
+    return threadTurns.updateQueuedTurn(selectedHostId.value, selectedThreadId.value, queuedId, {
+      text,
+    });
+  }
+
+  function removeQueuedTurn(queuedId: string) {
+    if (selectedHostId.value === null || selectedThreadId.value === null) return false;
+    return threadTurns.removeQueuedTurn(selectedHostId.value, selectedThreadId.value, queuedId);
+  }
+
+  async function steerQueuedTurn(queuedId: string) {
+    if (selectedHostId.value === null || selectedThreadId.value === null) return false;
+    return await threadTurns.steerQueuedTurn(
+      selectedHostId.value,
+      selectedThreadId.value,
+      queuedId,
+    );
+  }
+
   function handleFileReferenceLimit(message: string) {
     bootstrap.setError(message, {
       hostId: selectedHostId.value,
@@ -239,9 +271,14 @@ export function useComposerController() {
     selectedThreadTokenUsage,
     isThreadRunning,
     canInterruptTurn,
+    canSteerTurn,
     canStopTurn,
     canUsePrimaryAction,
     sendButtonLabel,
+    queuedTurns,
+    editQueuedTurn,
+    removeQueuedTurn,
+    steerQueuedTurn,
     slashMenuOpen: slashCommandsState.menuOpen,
     filteredSlashCommands: slashCommandsState.filteredCommands,
     selectedSlashCommandIndex: slashCommandsState.selectedIndex,
@@ -249,6 +286,7 @@ export function useComposerController() {
     runSlashCommand: slashActions.runSlashCommand,
     handleComposerKeydown,
     handlePrimaryAction,
+    steerTurnNow: submit.steerTurnNow,
     interruptTurn: submit.interruptTurn,
     handleFileReferenceLimit,
     models: visibleModels,

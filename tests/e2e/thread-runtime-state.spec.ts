@@ -232,7 +232,11 @@ test("opening completed history does not show fake thinking", async ({ page }) =
   await composerInput.fill("A steer draft must not replace the desktop stop control");
   await expect(page.getByTestId("stop-turn-button")).toBeVisible();
   await expect(page.getByTestId("send-turn-button")).toBeVisible();
-  await expect(page.getByTestId("send-turn-button")).toHaveAttribute("aria-label", /Send|发送/);
+  await expect(page.getByTestId("send-turn-button")).toHaveAttribute(
+    "aria-label",
+    /Queue message|排队消息/,
+  );
+  await expect(page.getByTestId("steer-turn-button")).toBeVisible();
   await composerInput.fill("");
   await expect(page.getByTestId("agent-message-actions")).toHaveCount(0);
   await expect(page.getByText(/Turn duration|本轮用时/)).toHaveCount(0);

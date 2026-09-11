@@ -14,6 +14,7 @@ const {
   attachedFiles,
   fileReferences,
   canInterruptTurn,
+  canSteerTurn,
   canStopTurn,
   canUsePrimaryAction,
   composerInputEnabled,
@@ -28,6 +29,7 @@ const {
   handlePaste,
   handlePrimaryAction,
   interruptTurn,
+  steerTurnNow,
   hasComposerInput,
   interruptingTurn,
   isThreadRunning,
@@ -37,6 +39,10 @@ const {
   models,
   planModeActive,
   removeAttachment,
+  queuedTurns,
+  editQueuedTurn,
+  removeQueuedTurn,
+  steerQueuedTurn,
   runSlashCommand,
   selectSlashCommandIndex,
   selectedSlashCommandIndex,
@@ -96,6 +102,7 @@ onMounted(focusDesktopComposer);
     :selected-thread-id="selectedThreadId"
     :selected-project-id="selectedProjectId"
     :selected-thread-token-usage="selectedThreadTokenUsage"
+    :queued-turns="queuedTurns"
     :models="models"
     :loading-models="loadingModels"
     :active-model="activeModel"
@@ -111,6 +118,7 @@ onMounted(focusDesktopComposer);
     :has-composer-input="hasComposerInput"
     :is-thread-running="isThreadRunning"
     :can-interrupt-turn="canInterruptTurn"
+    :can-steer-turn="canSteerTurn"
     :can-stop-turn="canStopTurn"
     :can-use-primary-action="canUsePrimaryAction"
     :interrupting-turn="interruptingTurn"
@@ -131,6 +139,10 @@ onMounted(focusDesktopComposer);
     @file-reference-limit="handleFileReferenceLimit"
     @primary-action="handlePrimaryAction"
     @interrupt-turn="interruptTurn"
+    @steer-turn="steerTurnNow"
+    @edit-queued-turn="editQueuedTurn"
+    @remove-queued-turn="removeQueuedTurn"
+    @steer-queued-turn="steerQueuedTurn"
     @apply-model-effort="applySelectedModelEffort"
   />
 </template>

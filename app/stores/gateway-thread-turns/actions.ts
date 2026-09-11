@@ -5,13 +5,17 @@ import { useGatewayTranslator } from "@/composables/i18n/useGatewayTranslator";
 import { interruptActiveTurn, interruptThreadTurn } from "./interrupt";
 import { loadOlderTurns } from "./older-turns";
 import { maybeQueueServerOverloadedRetry, maybeRetryAfterTurnFailure } from "./retry";
-import { sendTurn } from "./submission";
+import { flushQueuedTurn, sendTurn, steerQueuedTurn, type TurnDispatchOptions } from "./submission";
 import { respondToServerRequest } from "./transport";
 
 export function createGatewayThreadTurnActions() {
   const t = useGatewayTranslator();
   return {
-    sendTurn: (text: string, options?: ComposerTurnOptions) => sendTurn(t, text, options),
+    sendTurn: (text: string, options?: ComposerTurnOptions, dispatch?: TurnDispatchOptions) =>
+      sendTurn(t, text, options, dispatch),
+    flushQueuedTurn: (hostId: number, threadId: string) => flushQueuedTurn(t, hostId, threadId),
+    steerQueuedTurn: (hostId: number, threadId: string, queuedId: string) =>
+      steerQueuedTurn(t, hostId, threadId, queuedId),
     loadOlderTurns: (options?: { limit?: number }) => loadOlderTurns(t, options),
     interruptActiveTurn: () => interruptActiveTurn(t),
     interruptThreadTurn: (input: { hostId: number; threadId: string; projectId?: number | null }) =>

@@ -43,6 +43,7 @@ defineProps<{
   hasComposerInput: boolean;
   isThreadRunning: boolean;
   canInterruptTurn: boolean;
+  canSteerTurn: boolean;
   canStopTurn: boolean;
   canUsePrimaryAction: boolean;
   interruptingTurn: boolean;
@@ -54,6 +55,7 @@ const emit = defineEmits<{
   attach: [kind: "documents" | "media"];
   primaryAction: [];
   interruptTurn: [];
+  steerTurn: [];
   applyModelEffort: [selection: { model: string; effort: ReasoningEffort; serviceTier: string }];
 }>();
 </script>
@@ -122,6 +124,20 @@ const emit = defineEmits<{
           @apply="emit('applyModelEffort', $event)"
         />
       </div>
+      <Button
+        v-if="canSteerTurn"
+        data-testid="steer-turn-button"
+        type="button"
+        variant="outline"
+        size="sm"
+        class="shrink-0 gap-1.5 border-primary/50 px-2 text-primary hover:bg-primary/10"
+        :aria-label="$t('app.steerNow')"
+        :title="$t('app.steerNow')"
+        @click="emit('steerTurn')"
+      >
+        <SendIcon class="size-3.5" />
+        <span class="hidden sm:inline">{{ $t("app.steerNow") }}</span>
+      </Button>
       <Button
         v-if="isThreadRunning"
         data-testid="stop-turn-button"
