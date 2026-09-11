@@ -13,7 +13,10 @@ import { threadIdFromNotification } from "../protocol/thread-payload";
 import { currentGatewayUserId, gatewayMemoryState } from "../state/memory";
 import type { CodexRpcClient } from "../infra/rpc/rpc";
 import { runtimeLog } from "./runtime-log";
-import { runtimeStatusFromAppThreadStatus } from "~~/shared/thread-runtime-status";
+import {
+  isThreadActiveStatus,
+  runtimeStatusFromAppThreadStatus,
+} from "~~/shared/thread-runtime-status";
 import { threadMetadataStore } from "../state/thread-metadata";
 import { threadRuntimeEvents } from "./thread-runtime-events";
 
@@ -476,12 +479,7 @@ async function activeLoadedMainThreads(client: CodexRpcClient) {
 }
 
 function isActive(thread: AppServerThread) {
-  const statusRecord = recordFromUnknown(thread.status);
-  const status = typeof thread.status === "string" ? thread.status : statusRecord?.type;
-  return (
-    typeof status === "string" &&
-    ["active", "inProgress", "in_progress", "running"].includes(status)
-  );
+  return isThreadActiveStatus(thread.status);
 }
 
 function startedThread(message: unknown) {
