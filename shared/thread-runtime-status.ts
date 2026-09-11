@@ -55,7 +55,7 @@ export function isThreadActiveStatus(status: unknown) {
 
 export function runtimeStatusFromAppThreadStatus(status: unknown): ThreadRuntimeStatus {
   const value = statusValue(status);
-  if (value === "active" || value === "inProgress" || value === "running") return "running";
+  if (isThreadActiveStatus(value)) return "running";
   if (value === "systemError" || value === "failed") return "failed";
   if (value === "interrupted") return "interrupted";
   return "completed";
