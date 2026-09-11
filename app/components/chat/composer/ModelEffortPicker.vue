@@ -133,6 +133,14 @@ function applySelection() {
 function preventInitialFocus(event: Event) {
   event.preventDefault();
 }
+
+function modelOptionLabel(modelOption: ModelRecord) {
+  const displayName = modelOption.displayName?.trim();
+  if (displayName !== undefined && displayName !== "" && displayName !== "模型") {
+    return displayName;
+  }
+  return modelOption.model?.trim() || modelOption.id;
+}
 </script>
 
 <template>
@@ -258,7 +266,7 @@ function preventInitialFocus(event: Event) {
                 :data-testid="`model-option-${modelOptionValue(modelOption)}`"
                 class="min-h-11 text-sm"
               >
-                {{ modelOption.displayName || modelOption.model || modelOption.id }}
+                {{ modelOptionLabel(modelOption) }}
               </SelectItem>
             </SelectContent>
           </Select>

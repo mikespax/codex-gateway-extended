@@ -24,6 +24,11 @@ function isOpenAiModel(model: ModelRecord) {
   return provider === "" || provider === "openai";
 }
 
+function isPreferredLunaModel(model: ModelRecord) {
+  const normalized = (model.model || model.id).trim().toLowerCase();
+  return normalized === "gpt-5.6-luna" || normalized === "gpt-5.6-luna-latest";
+}
+
 export const useGatewayCatalogStore = defineStore("gateway-catalog", () => {
   const hosts = ref<HostRecord[]>([]);
   const projects = ref<ProjectRecord[]>([]);
@@ -47,6 +52,7 @@ export const useGatewayCatalogStore = defineStore("gateway-catalog", () => {
   const defaultModel = computed(
     () =>
       visibleModels.value.find((model) => model.isDefault === true) ??
+      visibleModels.value.find(isPreferredLunaModel) ??
       visibleModels.value[0] ??
       models.value.find((model) => model.isDefault === true) ??
       models.value[0] ??
