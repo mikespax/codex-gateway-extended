@@ -32,6 +32,7 @@ import {
 import { gatewayThreadFromAppServer } from "../protocol/gateway-thread";
 
 const THREAD_CACHE_VALIDATION_COOLDOWN_MS = 30_000;
+const THREAD_SNAPSHOT_REFRESH_EVENT = "gateway/thread/snapshot/updated";
 
 export class ThreadOpenService {
   private readonly pendingRefreshes = new Map<
@@ -169,13 +170,17 @@ export class ThreadOpenService {
     void validation
       .then((changed) => {
         if (!changed) return;
-        return this.refreshThreadState(host, threadId, projectId, limit).catch((error: unknown) => {
-          runtimeLog("thread cache background refresh failed", {
-            hostId: host.id,
-            threadId,
-            message: error instanceof Error ? error.message : String(error),
+        return this.refreshThreadState(host, threadId, projectId, limit)
+          .then(() => {
+            this.recordSnapshotRefresh(host.id, threadId);
+          })
+          .catch((error: unknown) => {
+            runtimeLog("thread cache background refresh failed", {
+              hostId: host.id,
+              threadId,
+              message: error instanceof Error ? error.message : String(error),
+            });
           });
-        });
       })
       .catch((error: unknown) => {
         runtimeLog("thread cache background validation failed", {
@@ -207,13 +212,17 @@ export class ThreadOpenService {
     )
       .then(async (candidate) => {
         if (candidate === null || candidate.validation !== "rejected") return;
-        await this.refreshThreadState(host, threadId, projectId, limit).catch((error: unknown) => {
-          runtimeLog("persistent thread cache background refresh failed", {
-            hostId: host.id,
-            threadId,
-            message: error instanceof Error ? error.message : String(error),
+        await this.refreshThreadState(host, threadId, projectId, limit)
+          .then(() => {
+            this.recordSnapshotRefresh(host.id, threadId);
+          })
+          .catch((error: unknown) => {
+            runtimeLog("persistent thread cache background refresh failed", {
+              hostId: host.id,
+              threadId,
+              message: error instanceof Error ? error.message : String(error),
+            });
           });
-        });
         this.noteCacheValidation(host.id, threadId);
       })
       .catch((error: unknown) => {
@@ -248,6 +257,16 @@ export class ThreadOpenService {
 
   private noteCacheValidation(hostId: number, threadId: string) {
     this.lastCacheValidationAt.set(refreshKey(hostId, threadId), Date.now());
+  }
+
+  private recordSnapshotRefresh(hostId: number, threadId: string) {
+    // The authoritative snapshot has changed after an immediate cache hit. Notify an already
+    // open browser so it can request the fresh snapshot itself; do not put transcript contents in
+    // this lightweight event.
+    threadRuntimeEvents.record(hostId, threadId, THREAD_SNAPSHOT_REFRESH_EVENT, {
+      method: THREAD_SNAPSHOT_REFRESH_EVENT,
+      params: { threadId },
+    });
   }
 
   private async validateCachedThread(

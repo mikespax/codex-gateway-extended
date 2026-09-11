@@ -11,6 +11,7 @@ import {
   appendFileDiffLines,
   completeTurnWithFinalAgentMessage,
   installRealtimeThreadSnapshotMock,
+  receiveRealtimeThreadEvent,
   seedGatewayThread,
   threadActivateRequests,
 } from "./helpers/gateway-store";
@@ -405,6 +406,49 @@ test("event-gap recovery retains the loaded history depth", async ({ page }) => 
   await expect
     .poll(() => page.evaluate(() => window.__codexGatewayE2e?.views.history?.thread.turns.length))
     .toBe(5);
+});
+
+test("background cache refresh replaces a stale open snapshot", async ({ page }) => {
+  await openApp(page);
+  const threadId = "e2e-background-cache-refresh";
+  const staleHistory = {
+    thread: { id: threadId, turns: buildTextTurns(1, 1, "stale cached turn") },
+  };
+  const freshHistory = {
+    thread: { id: threadId, turns: buildTextTurns(1, 1, "fresh authoritative turn") },
+  };
+  await seedGatewayThread(page, {
+    projectId: 1,
+    threadId,
+    currentThread: { id: threadId, name: "Background cache refresh" },
+    history: staleHistory,
+  });
+  await installRealtimeThreadSnapshotMock(page, {
+    snapshots: {
+      [threadId]: {
+        thread: { id: threadId, name: "Background cache refresh" },
+        history: freshHistory,
+        projectId: 1,
+      },
+    },
+  });
+
+  await expect(page.getByText("stale cached turn 001", { exact: true })).toBeVisible();
+  await receiveRealtimeThreadEvent(page, {
+    id: 1,
+    hostId: 1,
+    threadId,
+    method: "gateway/thread/snapshot/updated",
+    payload: {
+      method: "gateway/thread/snapshot/updated",
+      params: { threadId },
+    },
+    createdAt: new Date().toISOString(),
+  });
+
+  await expect.poll(() => threadActivateRequests(page).then((requests) => requests.length)).toBe(1);
+  await expect(page.getByText("fresh authoritative turn 001", { exact: true })).toBeVisible();
+  await expect(page.getByText("stale cached turn 001", { exact: true })).toHaveCount(0);
 });
 
 function selectedTimelineUsesCachedReference(page: Page, threadId: string) {

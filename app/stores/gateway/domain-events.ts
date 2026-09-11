@@ -37,6 +37,7 @@ export type GatewayDomainEventMap = {
   };
   "realtime-thread-event": { event: GatewayEvent };
   "realtime-thread-events-gap": { hostId: number; threadId: string };
+  "realtime-thread-snapshot-updated": { hostId: number; threadId: string };
   "history-events-project": { events: GatewayEvent[] };
   "realtime-thread-goal-updated": RealtimeMessage<"thread.goal.updated">;
   "realtime-thread-goal-cleared": RealtimeMessage<"thread.goal.cleared">;

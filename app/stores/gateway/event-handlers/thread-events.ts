@@ -9,6 +9,12 @@ import { runtimeStatusFromAppThreadStatus } from "../thread-utils/status";
 import type { GatewayEventHandlerRegistry } from "./types";
 
 export const threadEventHandlers: GatewayEventHandlerRegistry = {
+  "gateway/thread/snapshot/updated": (event, _params, threadId) => {
+    gatewayDomainEvents.emit("realtime-thread-snapshot-updated", {
+      hostId: event.hostId,
+      threadId,
+    });
+  },
   "thread/started": (event, params) => {
     const thread = appServerThreadFromUnknown(params.thread);
     if (thread !== null) {

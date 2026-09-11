@@ -369,6 +369,10 @@ export function createThreadOpenActions() {
       return recovery;
     },
 
+    refreshThreadSnapshotAfterCacheUpdate(hostId: number, threadId: string) {
+      return recoverThreadSnapshot(hostId, threadId);
+    },
+
     async restoreLastOpenThread() {
       const gateway = useGatewayCatalogStore();
       const navigation = useGatewayNavigationStore();

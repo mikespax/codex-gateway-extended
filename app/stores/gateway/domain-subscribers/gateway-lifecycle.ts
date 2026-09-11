@@ -57,6 +57,9 @@ export function registerGatewayLifecycleSubscribers() {
   gatewayDomainEvents.on("realtime-thread-events-gap", ({ hostId, threadId }) => {
     void useGatewayThreadViewStore().recoverThreadEventGap(hostId, threadId);
   });
+  gatewayDomainEvents.on("realtime-thread-snapshot-updated", ({ hostId, threadId }) => {
+    void useGatewayThreadViewStore().refreshThreadSnapshotAfterCacheUpdate(hostId, threadId);
+  });
   gatewayDomainEvents.on("realtime-error-reported", (event) => {
     useGatewayBootstrapStore().setError(event.message, {
       hostId: event.hostId,
