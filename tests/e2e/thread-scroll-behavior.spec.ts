@@ -1052,6 +1052,14 @@ test("streaming output does not force scroll when the user is reading earlier co
                 type: "commandExecution",
                 status: "running",
                 command: "node long-output.js",
+                // Routine live commands are intentionally summarized by the compact Working row.
+                // Keep this command approval-backed so the test exercises the visible, non-routine
+                // command output viewport without weakening that production compaction behavior.
+                pendingApproval: {
+                  requestId: "approval-scroll-1",
+                  method: "item/commandExecution/requestApproval",
+                  params: { reason: "Scroll viewport test" },
+                },
                 aggregatedOutput: commandLines.join("\n"),
               },
               {
