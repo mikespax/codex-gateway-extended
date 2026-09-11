@@ -11,7 +11,6 @@ export function useThreadSettingsControls() {
   const gateway = useGatewayCatalogStore();
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
-  const { t } = useI18n();
   const { models, defaultModel } = storeToRefs(gateway);
   const { selectedThreadSettings } = storeToRefs(composer);
   const { selectedThreadId } = storeToRefs(navigation);
@@ -113,7 +112,10 @@ export function useThreadSettingsControls() {
         ? displayName
         : null;
     const rawLabel = firstNonEmptyString([usableDisplayName, model?.model, activeModel.value]);
-    return compactModelLabel(rawLabel) ?? t("app.model");
+    // This is a diagnostic fallback, not a localized model name. Keep it stable and readable
+    // even if a browser has a non-English locale selected and the app-server has not supplied a
+    // model record yet.
+    return compactModelLabel(rawLabel) ?? "Model";
   });
   const activeEffortValue = computed(() => {
     if (selectedEffort.value !== "default") return selectedEffort.value;
