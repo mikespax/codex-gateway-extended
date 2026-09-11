@@ -79,21 +79,25 @@ void test("native migration queue parser preserves ordered text submissions", ()
     ],
     nextCursor: null,
   });
+  const firstSubmission = page.data[0];
+  const secondSubmission = page.data[1];
+  assert.ok(firstSubmission);
+  assert.ok(secondSubmission);
   const added = parseNativeMigrationQueueAddResponse({
-    queuedSubmission: page.data[0],
+    queuedSubmission: firstSubmission,
   });
   assert.equal(added.queuedSubmission.clientUserMessageId, "m-1");
   assert.equal(
     nativeMigrationQueueMatches(page.data, [
-      { ...page.data[0], id: "target-1" },
-      { ...page.data[1], id: "target-2" },
+      { ...firstSubmission, id: "target-1" },
+      { ...secondSubmission, id: "target-2" },
     ]),
     true,
   );
   assert.equal(
     nativeMigrationQueueMatches(page.data, [
-      { ...page.data[1], id: "target-1" },
-      { ...page.data[0], id: "target-2" },
+      { ...secondSubmission, id: "target-1" },
+      { ...firstSubmission, id: "target-2" },
     ]),
     false,
   );

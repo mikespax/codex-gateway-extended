@@ -1,4 +1,3 @@
-/* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-call, typescript/no-unsafe-member-access */
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CodexRateLimitWindow } from "../../shared/types/account-usage";

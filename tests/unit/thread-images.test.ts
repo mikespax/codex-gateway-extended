@@ -18,8 +18,10 @@ void test("normalizes Codex imageView and generated-image paths", () => {
       label: "Image",
     },
   ]);
+  const firstReference = references[0];
+  assert.ok(firstReference);
   assert.equal(
-    threadImageSource(references[0], 7),
+    threadImageSource(firstReference, 7),
     "/api/remote/images?hostId=7&path=%2Ftmp%2Ferror.png",
   );
   assert.deepEqual(
@@ -50,6 +52,10 @@ void test("normalizes inline user images and ignores unsupported sources", () =>
   });
 
   assert.equal(references.length, 2);
-  assert.equal(threadImageSource(references[0], 7), "data:image/png;base64,abc");
-  assert.equal(threadImageSource(references[1], 7), "");
+  const firstReference = references[0];
+  const secondReference = references[1];
+  assert.ok(firstReference);
+  assert.ok(secondReference);
+  assert.equal(threadImageSource(firstReference, 7), "data:image/png;base64,abc");
+  assert.equal(threadImageSource(secondReference, 7), "");
 });
