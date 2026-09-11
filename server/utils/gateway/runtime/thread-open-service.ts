@@ -34,6 +34,13 @@ import { gatewayThreadFromAppServer } from "../protocol/gateway-thread";
 const THREAD_CACHE_VALIDATION_COOLDOWN_MS = 30_000;
 const THREAD_SNAPSHOT_REFRESH_EVENT = "gateway/thread/snapshot/updated";
 
+function knownThreadSettings(value: unknown) {
+  const settings = extractThreadSettings(value);
+  return settings.model !== null || settings.effort !== null || settings.serviceTier !== null
+    ? settings
+    : null;
+}
+
 export class ThreadOpenService {
   private readonly pendingRefreshes = new Map<
     string,
@@ -512,7 +519,11 @@ export class ThreadOpenService {
       reconciledSnapshot = applyEventsAfter(
         host.id,
         threadId,
-        { ...cachedSnapshot, thread: result.thread },
+        {
+          ...cachedSnapshot,
+          thread: result.thread,
+          threadSettings: cachedSnapshot.threadSettings ?? knownThreadSettings(result.thread),
+        },
         snapshotEventCursor,
       ).snapshot;
       threadSnapshotStore.set(host.id, threadId, reconciledSnapshot);
@@ -662,12 +673,13 @@ export class ThreadOpenService {
         parseTurnsPage,
       ),
     ]);
+    const recentEvents = gatewayEventStore.list(host.id, threadId, 0, 200);
     return this.storeRemoteOpenSnapshot(
       host,
       projectId,
       read.thread,
       initialTurnsPage,
-      latestThreadSettingsFromEvents(gatewayEventStore.list(host.id, threadId, 0, 200)),
+      latestThreadSettingsFromEvents(recentEvents) ?? knownThreadSettings(read.thread),
       undefined,
       projectCwd,
       afterEventId,

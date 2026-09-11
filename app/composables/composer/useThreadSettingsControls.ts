@@ -11,6 +11,7 @@ export function useThreadSettingsControls() {
   const gateway = useGatewayCatalogStore();
   const composer = useGatewayComposerStore();
   const navigation = useGatewayNavigationStore();
+  const { t } = useI18n();
   const { models, defaultModel } = storeToRefs(gateway);
   const { selectedThreadSettings } = storeToRefs(composer);
   const { selectedThreadId } = storeToRefs(navigation);
@@ -100,7 +101,7 @@ export function useThreadSettingsControls() {
   const activeModelLabel = computed(() => {
     const model = activeModelRecord.value;
     const rawLabel = firstNonEmptyString([model?.model, model?.displayName, activeModel.value]);
-    return compactModelLabel(rawLabel) ?? "模型";
+    return compactModelLabel(rawLabel) ?? t("app.model");
   });
   const activeEffortValue = computed(() => {
     if (selectedEffort.value !== "default") return selectedEffort.value;
