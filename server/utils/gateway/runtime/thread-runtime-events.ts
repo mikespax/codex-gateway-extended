@@ -7,7 +7,7 @@ import { threadSnapshotStore } from "../state/thread-snapshots";
 import { dispatchThreadRuntimeNotification } from "../notifications/thread-notification-dispatcher";
 import { applyEventToOpenSnapshot } from "./open-snapshot-events";
 import { runtimeStatusFromEvent } from "~~/shared/thread-runtime-status";
-import { idFromUnknown, recordFromUnknown } from "~~/shared/utils/records";
+import { idFromUnknown, recordFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
 import { threadRuntimeStatusHub } from "./thread-runtime-status-hub";
 import { runtimeLog } from "./runtime-log";
 import { turnUsageAccounting } from "../usage/turn-usage-accounting";
@@ -38,6 +38,7 @@ class ThreadRuntimeEventBus {
     } & ThreadRuntimeAccountingOptions = {},
   ) {
     const envelope = parseRpcEnvelope(payload);
+    logTerminalTurnFailure(hostId, threadId, method, envelope.params);
     observeProviderFailure(hostId, threadId, method, envelope.params);
     const event = gatewayEventStore.add(hostId, threadId, method, envelope);
     subAgentThreadStore.recordRuntimeEvent(hostId, threadId, method, envelope);
@@ -101,6 +102,33 @@ class ThreadRuntimeEventBus {
   private key(userId: number, hostId: number, threadId: string) {
     return `${userId}:${hostId}:${threadId}`;
   }
+}
+
+/**
+ * Keep failed-turn diagnostics actionable without logging prompts, tool output, or raw provider
+ * payloads. The app-server puts the useful provider classification on turn/completed, while the
+ * Gateway UI only needs the generic terminal status.
+ */
+function logTerminalTurnFailure(hostId: number, threadId: string, method: string, params: unknown) {
+  if (method !== "turn/completed") return;
+  const record = recordFromUnknown(params);
+  const turn = recordFromUnknown(record?.turn);
+  if (stringFromUnknown(turn?.status) !== "failed") return;
+  const error = recordFromUnknown(turn?.error);
+  const codexErrorInfo = error?.codexErrorInfo;
+  const codexInfo =
+    typeof codexErrorInfo === "string"
+      ? codexErrorInfo
+      : recordFromUnknown(codexErrorInfo) !== null
+        ? (Object.keys(recordFromUnknown(codexErrorInfo) ?? {})[0] ?? "object")
+        : null;
+  runtimeLog("turn terminal failure", {
+    hostId,
+    threadId,
+    turnId: idFromUnknown(turn?.id),
+    errorClass: codexInfo,
+    errorMessage: stringFromUnknown(error?.message),
+  });
 }
 
 /**
