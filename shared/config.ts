@@ -1,4 +1,5 @@
 import type { GatewayConfig, GatewayNotificationSettings } from "./types";
+import type { ProviderRoutingSettings } from "./types/provider-routing";
 
 // Keep first paint bounded for item-heavy Codex 0.147 histories. Older turns are fetched only by
 // explicit history navigation; do not silently prepend a background page after the Agent viewport
@@ -15,6 +16,21 @@ export const PERSISTENT_THREAD_SNAPSHOT_MAX_BYTES = 2 * 1_024 * 1_024;
 export const PERSISTENT_THREAD_VIEW_MAX_BYTES = 2 * 1_024 * 1_024;
 export const DEFAULT_BARK_SERVER_URL = "https://api.day.app";
 export const DEFAULT_BARK_GROUP = "Codex Gateway";
+
+export const DEFAULT_PROVIDER_ROUTING: ProviderRoutingSettings = {
+  mode: "hybrid",
+  useOpenRouterCreditsFirst: true,
+};
+
+export function normalizeProviderRouting(
+  settings?: Partial<ProviderRoutingSettings> | null,
+): ProviderRoutingSettings {
+  const mode = settings?.mode;
+  return {
+    mode: mode === "openai" || mode === "deepseek" || mode === "hybrid" ? mode : "hybrid",
+    useOpenRouterCreditsFirst: settings?.useOpenRouterCreditsFirst !== false,
+  };
+}
 
 export function defaultNotificationSettings(): GatewayNotificationSettings {
   return {
@@ -53,5 +69,6 @@ export function defaultGatewayConfig(): GatewayConfig {
     projects: [],
     pinnedThreads: [],
     notifications: defaultNotificationSettings(),
+    providerRouting: { ...DEFAULT_PROVIDER_ROUTING },
   };
 }

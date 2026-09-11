@@ -24,6 +24,8 @@ export interface ThreadListResponse {
   data?: GatewayThread[];
   nextCursor?: string | null;
   backwardsCursor?: string | null;
+  /** True while the server is filling the advisory six-hour thread-size cache. */
+  threadStoragePending?: boolean;
   projects?: ProjectRecord[];
   projectDirectoryAvailability?: Record<number, ProjectDirectoryAvailability>;
 }

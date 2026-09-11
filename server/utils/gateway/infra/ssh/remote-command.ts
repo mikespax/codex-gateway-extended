@@ -55,7 +55,7 @@ fi
 export function codexRemoteAppServerStartPayload() {
   return codexRemotePayload(`
 set -eu
-${ensureGatewayCodexConfigFeatureSnippet()}
+${ensureGatewayCodexConfigProviderSnippet()}
 "$CODEX_BIN" app-server --listen unix://
 `);
 }
@@ -64,7 +64,7 @@ export function codexRemoteAppServerProxyPayload() {
   return codexRemotePayload(`
 set -eu
 socket="\${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
-${ensureGatewayCodexConfigFeatureSnippet()}
+${ensureGatewayCodexConfigProviderSnippet()}
 ${appServerSocketHasListenerSnippet()}
 if [ -S "$socket" ] && ! codex_gateway_socket_has_listener; then
   rm -f "$socket"
@@ -169,10 +169,41 @@ exit 1
 export function codexRemoteAppServerVerifyPayload() {
   return codexRemotePayload(`
 set -eu
-${ensureGatewayCodexConfigFeatureSnippet()}
+${ensureGatewayCodexConfigProviderSnippet()}
 "$CODEX_BIN" --version
 "$CODEX_BIN" app-server proxy --help >/dev/null
 `);
+}
+
+function ensureGatewayCodexConfigProviderSnippet() {
+  return `
+${ensureGatewayCodexConfigFeatureSnippet()}
+codex_home="\${CODEX_HOME:-$HOME/.codex}"
+config_file="$codex_home/config.toml"
+mkdir -p "$codex_home"
+touch "$config_file"
+if ! grep -q '^\\[model_providers.deepseek\\][[:space:]]*$' "$config_file"; then
+  cat >> "$config_file" <<'CODEX_GATEWAY_DEEPSEEK_PROVIDER'
+
+[model_providers.deepseek]
+name = "DeepSeek"
+base_url = "https://api.deepseek.com"
+wire_api = "responses"
+env_key = "DEEPSEEK_API_KEY"
+CODEX_GATEWAY_DEEPSEEK_PROVIDER
+fi
+if ! grep -q '^\\[model_providers.openrouter\\][[:space:]]*$' "$config_file"; then
+  cat >> "$config_file" <<'CODEX_GATEWAY_OPENROUTER_PROVIDER'
+
+[model_providers.openrouter]
+name = "OpenRouter (DeepSeek transport)"
+base_url = "https://openrouter.ai/api/v1"
+wire_api = "responses"
+env_key = "OPENROUTER_API_KEY"
+CODEX_GATEWAY_OPENROUTER_PROVIDER
+fi
+true
+`;
 }
 
 export function remoteLoginShellCommand(payload: string) {

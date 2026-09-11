@@ -12,6 +12,7 @@ import { threadRuntimeStatusHub } from "./thread-runtime-status-hub";
 import { runtimeLog } from "./runtime-log";
 import { turnUsageAccounting } from "../usage/turn-usage-accounting";
 import type { RateLimitsResolver } from "../usage/turn-usage-accounting";
+import { observeProviderFailure } from "../provider-router/logging";
 
 type ThreadEventSubscriber = (event: GatewayEvent) => void;
 export type ThreadGoalResolver = () => Promise<unknown>;
@@ -37,6 +38,7 @@ class ThreadRuntimeEventBus {
     } & ThreadRuntimeAccountingOptions = {},
   ) {
     const envelope = parseRpcEnvelope(payload);
+    observeProviderFailure(hostId, threadId, method, envelope.params);
     const event = gatewayEventStore.add(hostId, threadId, method, envelope);
     subAgentThreadStore.recordRuntimeEvent(hostId, threadId, method, envelope);
     threadSnapshotStore.update(hostId, threadId, (snapshot) =>

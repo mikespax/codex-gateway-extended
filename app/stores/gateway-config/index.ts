@@ -7,10 +7,15 @@ import type {
   GatewayConfig,
   GatewayNotificationSettings,
   PinnedThreadRecord,
+  ProviderRoutingSettings,
 } from "~~/shared/types";
 import { useAuthStore } from "@/stores/auth";
 import { gatewayApi } from "@/utils/gateway-api";
-import { defaultGatewayConfig, normalizeNotificationSettings } from "@/stores/gateway/config";
+import {
+  defaultGatewayConfig,
+  normalizeNotificationSettings,
+  normalizeProviderRouting,
+} from "@/stores/gateway/config";
 import { gatewayDomainEvents } from "@/stores/gateway/domain-events";
 import { createPinnedThreadSync } from "./pinned-thread-sync";
 import { recordFromUnknown } from "~~/shared/utils/records";
@@ -33,6 +38,7 @@ export const useGatewayConfigStore = defineStore("gateway-config", () => {
       projects: [...projects],
       pinnedThreads: gatewayConfig.value.pinnedThreads,
       notifications: normalizeNotificationSettings(gatewayConfig.value.notifications),
+      providerRouting: normalizeProviderRouting(gatewayConfig.value.providerRouting),
     };
   }
 
@@ -79,6 +85,19 @@ export const useGatewayConfigStore = defineStore("gateway-config", () => {
     return true;
   }
 
+  async function saveProviderRouting(providerRouting: ProviderRoutingSettings) {
+    const sessionIsCurrent = captureSessionEpoch();
+    const normalized = normalizeProviderRouting(providerRouting);
+    const result = await gatewayApi<ProviderRoutingSettings>("/api/provider-router/settings", {
+      method: "PATCH",
+      body: normalized,
+    });
+    if (!sessionIsCurrent()) return false;
+    gatewayConfig.value.providerRouting = normalized;
+    gatewayDomainEvents.emit("gateway-config-applied", { config: gatewayConfig.value });
+    return result;
+  }
+
   async function setPinnedThread(thread: PinnedThreadRecord, pinned: boolean) {
     const sessionIsCurrent = captureSessionEpoch();
     const result = await gatewayApi<GatewayConfig>("/api/config/pinned-threads", {
@@ -109,6 +128,7 @@ export const useGatewayConfigStore = defineStore("gateway-config", () => {
     exportConfigText,
     importConfigText,
     saveNotificationSettings,
+    saveProviderRouting,
     setPinnedThread,
     setPinnedThreadInactive,
     refreshPinnedThreads: pinnedThreadSync.refresh,

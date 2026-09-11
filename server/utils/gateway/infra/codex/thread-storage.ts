@@ -7,13 +7,13 @@ import { shellQuote } from "../ssh/shell";
 import type { SshConnectionPool } from "../ssh/ssh-connection";
 
 // Thread size is advisory UI metadata, not live state. Keep the value stable across sidebar
-// refreshes and conversation opens while allowing a newly available host to recover quickly.
-export const THREAD_STORAGE_CACHE_TTL_MS = 60_000;
-export const THREAD_STORAGE_FAILURE_TTL_MS = 15_000;
+// refreshes and conversation opens; a six-hour refresh is enough to surface meaningful growth
+// without repeatedly walking large rollout files over SSH. The displayed value is the persisted
+// rollout file itself; attachment payloads are intentionally not re-parsed in the remote shell.
+export const THREAD_STORAGE_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
 export const THREAD_STORAGE_SCAN_TIMEOUT_MS = 15_000;
 export const THREAD_STORAGE_MAX_OUTPUT_BYTES = 128 * 1024;
 export const THREAD_STORAGE_MAX_CONCURRENT_SCANS = 1;
-const THREAD_STORAGE_ATTACHMENT_SCAN_LIMIT_BYTES = 8 * 1024 * 1024;
 
 export type ThreadStorageCandidate = Pick<GatewayThread, "id" | "path">;
 
@@ -44,10 +44,27 @@ export class ThreadStorageScanner {
     const requested = requestedPaths(threads);
     if (requested.size === 0) return new Map<string, number | null>();
     const entry = this.cache.get(host.id);
-    if (entry === undefined || entry.expiresAt <= this.now()) {
+    if (entry === undefined) {
       return new Map([...requested.keys()].map((id) => [id, null] as const));
     }
+    // Keep the last successful measurement visible while the six-hour refresh runs. A transient
+    // SSH failure should never turn a known size back into a dash.
     return selectValues(requested, entry.values);
+  }
+
+  /**
+   * Report whether this host has uncached, resolvable rollout paths. The list endpoint uses this
+   * to let the browser schedule one follow-up refresh after the advisory background scan finishes.
+   * This keeps the authoritative thread list fast without leaving the first `—` placeholder in
+   * the sidebar indefinitely.
+   */
+  needsRefresh(host: HostRecord, threads: readonly ThreadStorageCandidate[]) {
+    const requested = requestedPaths(threads);
+    const resolvable = [...requested].filter(([, path]) => path !== null);
+    if (resolvable.length === 0) return false;
+    const entry = this.cache.get(host.id);
+    if (entry === undefined || entry.expiresAt <= this.now()) return true;
+    return resolvable.some(([id]) => !entry.values.has(id));
   }
 
   async scan(host: HostRecord, threads: readonly ThreadStorageCandidate[]) {
@@ -86,17 +103,30 @@ export class ThreadStorageScanner {
 
   private async scanMissing(host: HostRecord, requested: Map<string, string | null>) {
     const current = this.cache.get(host.id);
+    const cacheFresh = current !== undefined && current.expiresAt > this.now();
     const values =
-      current !== undefined && current.expiresAt > this.now()
-        ? new Map(current.values)
-        : new Map<string, number | null>();
-    const candidates = [...requested].filter(([id]) => !values.has(id));
+      current === undefined ? new Map<string, number | null>() : new Map(current.values);
+    const candidates = [...requested].filter(([id]) => !cacheFresh || !values.has(id));
     if (candidates.length === 0) return selectValues(requested, values);
+    const resolvable: Array<[string, string]> = [];
+    for (const [id, path] of candidates) {
+      if (path !== null) resolvable.push([id, path]);
+    }
+    // A path that temporarily disappears is treated like a failed refresh: retain a previous
+    // measurement when one exists, otherwise expose the neutral null value.
+    for (const [id, path] of candidates) {
+      if (path === null && !values.has(id)) values.set(id, null);
+    }
+    if (resolvable.length === 0) {
+      this.cache.set(host.id, { expiresAt: this.now() + THREAD_STORAGE_CACHE_TTL_MS, values });
+      return selectValues(requested, values);
+    }
+
     let scanned: CommandResult;
     try {
       scanned = await this.ssh.exec(
         host,
-        buildThreadStorageScanCommand(candidates.map(([id, path]) => ({ id, path }))),
+        buildThreadStorageScanCommand(resolvable.map(([id, path]) => ({ id, path }))),
         {
           timeoutMs: THREAD_STORAGE_SCAN_TIMEOUT_MS,
           maxOutputBytes: THREAD_STORAGE_MAX_OUTPUT_BYTES,
@@ -105,23 +135,23 @@ export class ThreadStorageScanner {
     } catch {
       // Storage is advisory. Cache a neutral result after a timeout or SSH error so repeated list
       // refreshes cannot create an unbounded queue of identical remote scans.
-      for (const [id] of candidates) values.set(id, null);
-      this.cache.set(host.id, { expiresAt: this.now() + THREAD_STORAGE_FAILURE_TTL_MS, values });
+      for (const [id] of resolvable) if (!values.has(id)) values.set(id, null);
+      this.cache.set(host.id, { expiresAt: this.now() + THREAD_STORAGE_CACHE_TTL_MS, values });
       return selectValues(requested, values);
     }
     if (scanned.code !== 0) {
-      for (const [id] of candidates) values.set(id, null);
-      this.cache.set(host.id, { expiresAt: this.now() + THREAD_STORAGE_FAILURE_TTL_MS, values });
+      for (const [id] of resolvable) if (!values.has(id)) values.set(id, null);
+      this.cache.set(host.id, { expiresAt: this.now() + THREAD_STORAGE_CACHE_TTL_MS, values });
       return selectValues(requested, values);
     }
     const parsed = parseThreadStorageScanOutput(
       scanned.stdout,
-      candidates.map(([id]) => id),
+      resolvable.map(([id]) => id),
     );
     for (const [id, size] of parsed) values.set(id, size);
-    // A missing or unsafe path is cached as null for the same short interval, preventing a broken
-    // rollout from turning each sidebar refresh into another remote request.
-    for (const [id] of candidates) if (!values.has(id)) values.set(id, null);
+    // A missing or unsafe path is cached as null for the same refresh interval, preventing a
+    // broken rollout from turning each sidebar refresh into another remote request.
+    for (const [id] of resolvable) if (!values.has(id)) values.set(id, null);
     this.cache.set(host.id, { expiresAt: this.now() + THREAD_STORAGE_CACHE_TTL_MS, values });
     return selectValues(requested, values);
   }
@@ -163,13 +193,14 @@ export function parseThreadStorageScanOutput(output: string, ids: readonly strin
 export function buildThreadStorageScanCommand(
   candidates: readonly { id: string; path: string | null }[],
 ) {
-  const argumentsList = candidates.flatMap((candidate) => [candidate.id, candidate.path ?? ""]);
+  const paths = candidates
+    .map((candidate) => candidate.path)
+    .filter((path): path is string => path !== null);
   const payload = `
 set -u
 codex_home="\${CODEX_HOME:-$HOME/.codex}"
 sessions_root="$codex_home/sessions"
 archived_root="$codex_home/archived_sessions"
-attachment_root="$codex_home/attachments"
 
 real_path() {
   realpath -e -- "$1" 2>/dev/null || realpath -- "$1" 2>/dev/null || true
@@ -181,83 +212,30 @@ file_bytes() {
     *) printf '%s' "$value" ;;
   esac
 }
-directory_bytes() {
-  value="$(du -sk -- "$1" 2>/dev/null | awk 'NR == 1 { print $1 * 1024; exit }')"
-  if [ -z "$value" ]; then
-    value="$(du -sk "$1" 2>/dev/null | awk 'NR == 1 { print $1 * 1024; exit }')"
-  fi
-  case "$value" in
-    ''|*[!0-9]*) return 1 ;;
-    *) printf '%s' "$value" ;;
-  esac
-}
 inside_root() {
   case "$1" in
     "$2"/*) return 0 ;;
     *) return 1 ;;
   esac
 }
-attachment_bytes() {
-  reference="$1"
-  candidate="$(printf '%s\\n' "$reference" | sed -e 's/[|,;)}]*$//' -e 's/:[0-9][0-9]*$//')"
-  [ -n "$candidate" ] || return 0
-  resolved="$(real_path "$candidate")"
-  [ -n "$resolved" ] || return 0
-  inside_root "$resolved" "$attachment_root" || return 0
-  if [ -f "$resolved" ]; then file_bytes "$resolved" || true; fi
-}
-
-discover_rollout() {
-  case "$1" in
-    ''|*[!A-Za-z0-9_-]*) return 0 ;;
-  esac
-  find "$sessions_root" "$archived_root" -type f -name "*$1*" -print 2>/dev/null | head -n 1
-}
 
 index=0
-while [ "$#" -gt 0 ]; do
-  thread_id="$1"
-  shift
-  input="\${1-}"
-  shift || true
-  resolved=""
-  if [ -n "$input" ]; then
-    resolved="$(real_path "$input")"
-  fi
-  if [ -z "$resolved" ] || ! [ -f "$resolved" ] && ! [ -d "$resolved" ]; then
-    resolved="$(discover_rollout "$thread_id")"
-  fi
-  if [ -z "$resolved" ] || ! [ -f "$resolved" ] && ! [ -d "$resolved" ]; then
+for input do
+  resolved="$(real_path "$input")"
+  if [ -z "$resolved" ] || ! [ -f "$resolved" ]; then
     index=$((index + 1)); continue
   fi
   if ! inside_root "$resolved" "$sessions_root" && ! inside_root "$resolved" "$archived_root"; then
     index=$((index + 1)); continue
   fi
-  total=0
-  if [ -f "$resolved" ]; then
-    own="$(file_bytes "$resolved" || true)"
-    case "$own" in ''|*[!0-9]*) index=$((index + 1)); continue ;; esac
-    total=$own
-    # Attachment references are read only from this rollout. Shared attachments not referenced by
-    # the thread are intentionally excluded, as are references that resolve outside CODEX_HOME.
-    while IFS= read -r reference; do
-      extra="$(attachment_bytes "$reference")"
-      case "$extra" in ''|*[!0-9]*) ;; *) total=$((total + extra)) ;; esac
-    done <<EOF
-$(if [ "$own" -le ${THREAD_STORAGE_ATTACHMENT_SCAN_LIMIT_BYTES} ]; then
-  grep -aoE '/[^[:space:]" ]+/attachments/[^[:space:]" ]+' "$resolved" 2>/dev/null | sort -u || true
-fi)
-EOF
-  else
-    total="$(directory_bytes "$resolved" || true)"
-    case "$total" in ''|*[!0-9]*) index=$((index + 1)); continue ;; esac
-  fi
+  total="$(file_bytes "$resolved" || true)"
+  case "$total" in ''|*[!0-9]*) index=$((index + 1)); continue ;; esac
   printf '%s\\t%s\\n' "$index" "$total"
   index=$((index + 1))
 done
 `;
   return remoteLoginShellCommand(
-    `sh -c ${shellQuote(payload)} sh ${argumentsList.map(shellQuote).join(" ")}`,
+    `sh -c ${shellQuote(payload)} sh ${paths.map(shellQuote).join(" ")}`,
   );
 }
 

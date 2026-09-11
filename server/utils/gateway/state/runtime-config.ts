@@ -1,5 +1,5 @@
 import type { GatewayConfig } from "~~/shared/types";
-import { normalizeNotificationSettings } from "~~/shared/config";
+import { normalizeNotificationSettings, normalizeProviderRouting } from "~~/shared/config";
 import { gatewayEventStore } from "./gateway-events";
 import { gatewayMemoryState } from "./memory";
 import { normalizePinnedThreads } from "./memory";
@@ -8,6 +8,7 @@ import { projectStore } from "./projects";
 import { subAgentThreadStore } from "./sub-agent-threads";
 import { threadMetadataStore } from "./thread-metadata";
 import { threadSnapshotStore } from "./thread-snapshots";
+import { getProviderRouterState, updateProviderRouterState } from "../provider-router/state";
 
 export const runtimeConfigStore = {
   replace(config: GatewayConfig) {
@@ -23,6 +24,10 @@ export const runtimeConfigStore = {
       (thread) => hostIds.has(thread.hostId),
     );
     gatewayMemoryState.notifications = normalizeNotificationSettings(config.notifications);
+    gatewayMemoryState.providerRouting = normalizeProviderRouting(config.providerRouting);
+    updateProviderRouterState((state) => {
+      state.settings = normalizeProviderRouting(config.providerRouting);
+    });
   },
 
   replacePinnedThreads(pinnedThreads: GatewayConfig["pinnedThreads"]) {
@@ -36,6 +41,13 @@ export const runtimeConfigStore = {
     gatewayMemoryState.notifications = normalizeNotificationSettings(notifications);
   },
 
+  replaceProviderRouting(providerRouting: NonNullable<GatewayConfig["providerRouting"]>) {
+    gatewayMemoryState.providerRouting = normalizeProviderRouting(providerRouting);
+    updateProviderRouterState((state) => {
+      state.settings = normalizeProviderRouting(providerRouting);
+    });
+  },
+
   export(): GatewayConfig {
     return {
       version: 1,
@@ -46,6 +58,9 @@ export const runtimeConfigStore = {
       projects: projectStore.listConfigured(),
       pinnedThreads: gatewayMemoryState.pinnedThreads,
       notifications: normalizeNotificationSettings(gatewayMemoryState.notifications),
+      providerRouting: normalizeProviderRouting(
+        getProviderRouterState().settings ?? gatewayMemoryState.providerRouting,
+      ),
     };
   },
 

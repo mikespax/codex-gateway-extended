@@ -133,6 +133,30 @@ export function useComposerController() {
     onSelect: slashActions.runSlashCommand,
   });
 
+  function isMobileOrTabletInput() {
+    if (device.isMobileOrTablet) return true;
+    if (typeof navigator === "undefined") return false;
+
+    // The device module can be fixed to the server's desktop default when a proxy omits the
+    // user-agent header. Recheck the browser value so a real mobile keyboard never inherits the
+    // desktop Enter-to-send contract. Prefer explicit UA-CH/mobile and UA signals, then use the
+    // browser's coarse-pointer signal when a proxy has rewritten or omitted those values. iPadOS
+    // may expose a desktop Mac UA, so include its touch signature without treating every
+    // fine-pointer desktop browser as mobile.
+    const userAgentData = (navigator as Navigator & { userAgentData?: { mobile?: boolean } })
+      .userAgentData;
+    if (userAgentData?.mobile === true) return true;
+
+    const userAgent = navigator.userAgent;
+    if (/Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(userAgent)) return true;
+    if (navigator.maxTouchPoints > 1 && /Macintosh/i.test(userAgent)) return true;
+    return (
+      navigator.maxTouchPoints > 0 &&
+      typeof window !== "undefined" &&
+      window.matchMedia("(pointer: coarse)").matches
+    );
+  }
+
   async function submitComposer() {
     if (await slashActions.executeInlineSlashCommand()) {
       slashCommandsState.dismiss();
@@ -148,8 +172,10 @@ export function useComposerController() {
     if (slashCommandsState.handleKeydown(event)) {
       return;
     }
-    // Desktop keyboard users expect Enter to submit. Detect mobile from the device/user-agent,
-    // rather than the viewport width, so a resized desktop window keeps the desktop shortcut.
+    // Desktop keyboard users expect Enter to submit, even when the desktop browser window is
+    // narrow enough to use the mobile-style layout. Use the device class (with a browser UA
+    // fallback) instead of a viewport breakpoint so resizing a desktop window does not unexpectedly
+    // change the key contract.
     // Preserve mobile's multiline editor so the software keyboard cannot accidentally send a
     // half-written message; Shift+Enter is the explicit desktop newline shortcut.
     if (
@@ -158,7 +184,7 @@ export function useComposerController() {
       !event.altKey &&
       !event.ctrlKey &&
       !event.metaKey &&
-      !device.isMobileOrTablet &&
+      !isMobileOrTabletInput() &&
       canSendTurn.value
     ) {
       event.preventDefault();
