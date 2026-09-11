@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { sign } from "node:crypto";
 import type { ServerNotification } from "~~/shared/types";
 import { z } from "zod";
@@ -46,7 +46,13 @@ export class FirebaseRequestError extends Error {
 }
 
 export function firebaseConfigured() {
-  return firebaseCredentialsPath() !== "";
+  const path = firebaseCredentialsPath();
+  if (path === "") return false;
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 export async function sendFirebaseNotification(
