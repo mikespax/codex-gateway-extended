@@ -1,4 +1,5 @@
 import type { ThreadOpenSnapshot } from "../runtime/types";
+import type { PinnedThreadRecord } from "~~/shared/types";
 import { SERVER_THREAD_CACHE_LIMIT } from "~~/shared/config";
 import {
   deletePersistentThreadSnapshot,
@@ -64,6 +65,23 @@ export const threadSnapshotStore = {
     const record = readPersistentThreadSnapshot(userId, hostId, threadId);
     if (record === null) return null;
     return record.snapshot;
+  },
+
+  hydratePersistentPinnedThreads(pinnedThreads: PinnedThreadRecord[]) {
+    const hydrated = new Set<string>();
+    for (const pinned of pinnedThreads) {
+      const threadId = pinned.threadId.trim();
+      if (threadId === "") continue;
+      const key = `${pinned.hostId}:${threadId}`;
+      if (hydrated.has(key) || this.get(pinned.hostId, threadId) !== null) continue;
+      const snapshot = this.restorePersistent(pinned.hostId, threadId);
+      if (snapshot === null) continue;
+      // This is a read-only startup warm-up. Do not schedule another database write; the
+      // authoritative validation remains queued by ThreadOpenService when the thread is opened.
+      this.hydratePersistent(pinned.hostId, threadId, snapshot);
+      hydrated.add(key);
+    }
+    return hydrated.size;
   },
 
   hydratePersistent(hostId: number, threadId: string, snapshot: ThreadOpenSnapshot) {

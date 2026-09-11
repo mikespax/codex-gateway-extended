@@ -23,6 +23,7 @@ export const runtimeConfigStore = {
     gatewayMemoryState.pinnedThreads = normalizePinnedThreads(config.pinnedThreads ?? []).filter(
       (thread) => hostIds.has(thread.hostId),
     );
+    threadSnapshotStore.hydratePersistentPinnedThreads(gatewayMemoryState.pinnedThreads);
     gatewayMemoryState.notifications = normalizeNotificationSettings(config.notifications);
     gatewayMemoryState.providerRouting = normalizeProviderRouting(config.providerRouting);
     updateProviderRouterState((state) => {
@@ -35,6 +36,7 @@ export const runtimeConfigStore = {
     gatewayMemoryState.pinnedThreads = normalizePinnedThreads(pinnedThreads).filter((thread) =>
       hostIds.has(thread.hostId),
     );
+    threadSnapshotStore.hydratePersistentPinnedThreads(gatewayMemoryState.pinnedThreads);
   },
 
   replaceNotifications(notifications: GatewayConfig["notifications"]) {
