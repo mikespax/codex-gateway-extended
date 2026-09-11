@@ -33,7 +33,9 @@ const { t } = useI18n();
       "
       :aria-expanded="open"
       :data-state="open ? 'open' : 'closed'"
-      :data-testid="open ? 'intermediate-steps' : undefined"
+      :data-testid="
+        open ? (props.footer ? 'intermediate-steps-footer' : 'intermediate-steps') : undefined
+      "
       @click="emit('toggle', !props.open)"
     >
       <ChevronUpIcon v-if="props.footer" class="size-4 shrink-0 text-ink-faint" />
