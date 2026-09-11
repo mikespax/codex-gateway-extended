@@ -199,7 +199,10 @@ export class ThreadController {
       if (currentProvider === provider && (model === null || currentModel === model)) {
         return { provider, model, changed: false };
       }
-      if (this.activeMainThread || snapshot?.thread.status.type === "active") {
+      // `activeMainThread` means that this controller is the primary browser-visible controller;
+      // it does not mean that the app-server currently has a running turn. Only the authoritative
+      // thread status may block a safe idle provider switch.
+      if (snapshot?.thread.status.type === "active") {
         throw new Error(
           "Provider change is waiting for the current turn to finish; retry after the thread is idle.",
         );
