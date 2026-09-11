@@ -64,6 +64,7 @@ test("shows a scrolling overview of goal, turn, task, and user input", async ({ 
     );
   }, updatedAt);
 
+  await page.getByTestId("recent-chats-toggle").click();
   const row = page.getByTestId("recent-thread-button-sidebar-summary-thread");
   await expect(row).toBeVisible();
   const overview = row.getByTestId("thread-sidebar-overview");
@@ -283,15 +284,19 @@ test("marks completed threads as needing review until they are opened", async ({
 
   await expect(page.getByTestId("thread-button-review-thread")).toBeVisible();
   await expect(
-    page.getByTestId("thread-button-review-thread").getByLabel("已完成，待查看", { exact: true }),
+    page
+      .getByTestId("thread-button-review-thread")
+      .getByLabel(/Completed, needs review|已完成，待查看/),
   ).toBeVisible();
 
   await page.getByTestId("thread-button-review-thread").click();
   await expect(
-    page.getByTestId("thread-button-review-thread").getByLabel("已完成", { exact: true }),
+    page.getByTestId("thread-button-review-thread").getByLabel(/Completed|已完成/),
   ).toBeVisible();
   await expect(
-    page.getByTestId("thread-button-review-thread").getByLabel("已完成，待查看", { exact: true }),
+    page
+      .getByTestId("thread-button-review-thread")
+      .getByLabel(/Completed, needs review|已完成，待查看/),
   ).toBeHidden();
 });
 
@@ -389,7 +394,8 @@ test("keeps non-pinned main threads in recent activity for the page session", as
     { host, project },
   );
 
-  await expect(page.getByText("最近运行", { exact: true })).toBeVisible();
+  await page.getByTestId("recent-chats-toggle").click();
+  await expect(page.getByTestId("recent-chats-toggle")).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByTestId("recent-thread-button-recent-main")).toBeVisible();
   await expect(page.getByTestId("recent-thread-button-already-pinned")).toBeHidden();
   await expect(page.getByTestId("recent-thread-button-spawned-child")).toBeHidden();
@@ -399,7 +405,7 @@ test("keeps non-pinned main threads in recent activity for the page session", as
 
   const sectionOrder = await page.getByTestId("sidebar-scroll-area").evaluate((root) => {
     const text = root.textContent ?? "";
-    return [text.indexOf("已固定"), text.indexOf("最近运行"), text.indexOf("主机")];
+    return [text.indexOf("Pinned"), text.indexOf("Recent chats"), text.indexOf("Hosts")];
   });
   expect(sectionOrder[0]).toBeLessThan(sectionOrder[1]!);
   expect(sectionOrder[1]).toBeLessThan(sectionOrder[2]!);
@@ -475,6 +481,7 @@ test("does not reorder chat activity while a turn is still running", async ({ pa
     { host, project },
   );
 
+  await page.getByTestId("recent-chats-toggle").click();
   const recentRows = page.locator('[data-testid^="recent-thread-button-"]');
   await expect(recentRows).toHaveCount(2);
   await expect
@@ -629,8 +636,12 @@ test("long expanded tree labels truncate without displacing trailing statuses", 
     "data-selected",
     "true",
   );
-  await expect(page.getByTestId(`host-button-${hostId}`).getByLabel("已连接")).toBeVisible();
-  await expect(page.getByTestId(`thread-button-${threadId}`).getByLabel("运行中")).toBeVisible();
+  await expect(
+    page.getByTestId(`host-button-${hostId}`).getByLabel(/Connected|已连接/),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`thread-button-${threadId}`).getByLabel(/Running|运行中/),
+  ).toBeVisible();
 
   const metrics = await page.getByTestId("sidebar-scroll-area").evaluate(
     (root, { hostId, threadId, longTitle }) => {
@@ -640,9 +651,11 @@ test("long expanded tree labels truncate without displacing trailing statuses", 
       );
       const title = threadButton?.querySelector<HTMLElement>(`[title="${CSS.escape(longTitle)}"]`);
       const hostStatus = root.querySelector<HTMLElement>(
-        `[data-testid="host-button-${hostId}"] [aria-label="已连接"]`,
+        `[data-testid="host-button-${hostId}"] [aria-label="Connected"], [data-testid="host-button-${hostId}"] [aria-label="已连接"]`,
       );
-      const threadStatus = threadButton?.querySelector<HTMLElement>('[aria-label="运行中"]');
+      const threadStatus = threadButton?.querySelector<HTMLElement>(
+        '[aria-label="Running"], [aria-label="运行中"]',
+      );
       const statuses = [hostStatus, threadStatus];
       if (!viewport || !title || statuses.some((status) => !status)) {
         throw new Error("Missing sidebar layout nodes");
