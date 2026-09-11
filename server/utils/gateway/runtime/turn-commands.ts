@@ -10,7 +10,7 @@ import { recordFromUnknown, stringFromUnknown } from "~~/shared/utils/records";
 import { trimmedOrFallback } from "~~/shared/utils/strings";
 import { parseTurnStartResponse, parseTurnSteerResponse } from "~~/shared/runtime/app-server";
 import { turnUsageAccounting } from "../usage/turn-usage-accounting";
-import { chooseProvider } from "../provider-router/policy";
+import { chooseProvider, DEFAULT_OPENAI_MODEL } from "../provider-router/policy";
 import { classifyOpenAiFailure } from "../provider-router/quota";
 import { getProviderRouterState, updateProviderRouterState } from "../provider-router/state";
 import { logProviderDecision } from "../provider-router/logging";
@@ -207,7 +207,23 @@ export class ThreadTurnCommandService {
     input: TurnStartInput,
     decision: ProviderDecision,
   ) {
-    const routedInput = { ...input, model: decision.model };
+    const routedInput = {
+      ...input,
+      model: decision.model,
+      collaborationMode:
+        input.collaborationMode !== null &&
+        input.collaborationMode !== undefined &&
+        decision.model !== null &&
+        decision.model !== ""
+          ? {
+              ...input.collaborationMode,
+              settings: {
+                ...input.collaborationMode.settings,
+                model: decision.model,
+              },
+            }
+          : input.collaborationMode,
+    };
     return controller
       .enqueue(() =>
         controller.client.request(
@@ -346,7 +362,7 @@ function hybridOpenAiFallbackDecision(input: TurnStartInput, previous: ProviderD
   const model =
     input.model !== null && input.model !== undefined && !input.model.startsWith("deepseek")
       ? input.model
-      : null;
+      : DEFAULT_OPENAI_MODEL;
   return {
     ...previous,
     logicalProvider: "openai" as const,
