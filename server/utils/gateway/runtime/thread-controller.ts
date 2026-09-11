@@ -196,7 +196,12 @@ export class ThreadController {
       }
       const currentProvider = snapshot?.thread.modelProvider ?? null;
       const currentModel = snapshot?.thread.model ?? snapshot?.threadSettings?.model ?? null;
-      if (currentProvider === provider && (model === null || currentModel === model)) {
+      const hasProviderBoundaryFailure = snapshotHasProviderBoundaryFailure(snapshot);
+      if (
+        currentProvider === provider &&
+        (model === null || currentModel === model) &&
+        !(provider === "openai" && hasProviderBoundaryFailure)
+      ) {
         return { provider, model, changed: false };
       }
       // `activeMainThread` means that this controller is the primary browser-visible controller;
@@ -211,7 +216,10 @@ export class ThreadController {
       // continuation unless the official app-server compacts the history first. Do this only at
       // an idle DeepSeek -> OpenAI boundary; it is never run during an active turn and the
       // app-server remains the sole authority for the resulting summary.
-      if (currentProvider === "deepseek" && provider === "openai") {
+      if (
+        provider === "openai" &&
+        (currentProvider === "deepseek" || hasProviderBoundaryFailure)
+      ) {
         await this.compactHistoryForProviderSwitch();
       }
       if (this.subscribed) {
@@ -402,4 +410,19 @@ export class ThreadController {
       });
     }
   }
+}
+
+function snapshotHasProviderBoundaryFailure(snapshot: ThreadOpenSnapshot | null) {
+  if (snapshot === null) return false;
+  return snapshot.history.thread.turns.slice(-3).some((turn) => {
+    const messages = [
+      turn.error?.message,
+      ...(turn.items ?? []).flatMap((item) => [item.error?.message]),
+    ];
+    return messages.some(
+      (message) =>
+        typeof message === "string" &&
+        /array_above_max_length|mixed-provider|provider.*history/i.test(message),
+    );
+  });
 }
