@@ -57,19 +57,6 @@ export class ThreadTurnCommandService {
           input,
           decision,
         );
-        if (decision.transport === "openrouter") {
-          updateProviderRouterState((state) => {
-            if (state.openrouter === "unknown") {
-              state.openrouter = "available";
-              state.openrouterLastError = null;
-            }
-          });
-        }
-        if (decision.transport === "deepseek") {
-          updateProviderRouterState((state) => {
-            state.directDeepseek = "available";
-          });
-        }
         logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
           hostId: host.id,
           status: "200",
@@ -108,11 +95,6 @@ export class ThreadTurnCommandService {
             input,
             decision,
           );
-          if (decision.transport === "deepseek") {
-            updateProviderRouterState((state) => {
-              state.directDeepseek = "available";
-            });
-          }
           logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
             hostId: host.id,
             status: "200",
@@ -169,9 +151,6 @@ export class ThreadTurnCommandService {
               input,
               decision,
             );
-            updateProviderRouterState((state) => {
-              state.directDeepseek = "available";
-            });
             logProviderDecision(`turn-${clientUserMessageId}`, threadId, decision, {
               hostId: host.id,
               status: "200",

@@ -130,3 +130,47 @@ void test("asynchronous OpenRouter insufficient-credit event persists exhaustion
     resetProviderRouterStateForTests();
   }
 });
+
+void test("DeepSeek health is unknown until a turn completes and cannot remain falsely available after failure", () => {
+  const path = join(mkdtempSync(join(tmpdir(), "provider-deepseek-event-")), "state.json");
+  const previous = process.env.CODEX_PROVIDER_ROUTER_STATE_FILE;
+  process.env.CODEX_PROVIDER_ROUTER_STATE_FILE = path;
+  try {
+    resetProviderRouterStateForTests();
+    logProviderDecision(
+      "fixture",
+      "deepseek-test",
+      {
+        mode: "deepseek",
+        logicalProvider: "deepseek",
+        effectiveProvider: "deepseek",
+        transport: "deepseek",
+        model: "deepseek-v4-flash",
+        containsImages: false,
+        deepseekPeriod: "off_peak",
+        reason: "deepseek_only_direct",
+      },
+      { hostId: 4, status: "200" },
+    );
+    assert.equal(getProviderRouterState().directDeepseek, "unknown");
+
+    observeProviderFailure(4, "deepseek-test", "turn/completed", {
+      turn: { status: "failed" },
+    });
+    assert.equal(getProviderRouterState().directDeepseek, "unknown");
+
+    observeProviderFailure(4, "deepseek-test", "turn/completed", {
+      turn: { status: "completed" },
+    });
+    assert.equal(getProviderRouterState().directDeepseek, "available");
+
+    observeProviderFailure(4, "deepseek-test", "turn/completed", {
+      turn: { status: "failed", error: { message: "DeepSeek API key is missing" } },
+    });
+    assert.equal(getProviderRouterState().directDeepseek, "unavailable");
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_PROVIDER_ROUTER_STATE_FILE;
+    else process.env.CODEX_PROVIDER_ROUTER_STATE_FILE = previous;
+    resetProviderRouterStateForTests();
+  }
+});

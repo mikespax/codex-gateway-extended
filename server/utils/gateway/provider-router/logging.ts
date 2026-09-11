@@ -1,7 +1,7 @@
 import type { ProviderDecision } from "./types";
 import { currentGatewayUserId } from "../state/memory";
 import { updateProviderRouterState } from "./state";
-import { recordFromUnknown } from "../../../../shared/utils/records";
+import { recordFromUnknown, stringFromUnknown } from "../../../../shared/utils/records";
 
 export function observeProviderFailure(
   hostId: number,
@@ -10,13 +10,42 @@ export function observeProviderFailure(
   params: unknown,
 ) {
   if (method !== "error" && method !== "turn/completed") return;
-  if (lastThreadRoute(hostId, threadId)?.transport !== "openrouter") return;
+  const route = lastThreadRoute(hostId, threadId);
+  if (route === null) return;
   const record = recordFromUnknown(params);
   if (!record) return;
   const turn = recordFromUnknown(record.turn);
   const error = record.error ?? turn?.error;
-  if (error === null || error === undefined) return;
-  const message = JSON.stringify(error).toLowerCase();
+  const message = error === null || error === undefined ? "" : JSON.stringify(error).toLowerCase();
+  const status = stringFromUnknown(turn?.status) ?? stringFromUnknown(record.status);
+
+  if (route.transport === "deepseek") {
+    // turn/start only proves that the app-server accepted the request. The provider is not
+    // healthy until the same turn reaches a clean terminal completion. This avoids reporting
+    // DeepSeek as available when the turn immediately fails due to missing credentials/model
+    // configuration, which is especially important for fail-closed DeepSeek-only mode.
+    if (method === "turn/completed" && status === "completed" && error === undefined) {
+      updateProviderRouterState((state) => {
+        state.directDeepseek = "available";
+      });
+      return;
+    }
+    if (method === "turn/completed" && status === "failed") {
+      updateProviderRouterState((state) => {
+        if (isDeepSeekTransportFailure(message)) state.directDeepseek = "unavailable";
+        else if (state.directDeepseek === "available") state.directDeepseek = "unknown";
+      });
+      return;
+    }
+    if (isDeepSeekTransportFailure(message)) {
+      updateProviderRouterState((state) => {
+        state.directDeepseek = "unavailable";
+      });
+    }
+    return;
+  }
+
+  if (route.transport !== "openrouter" || error === null || error === undefined) return;
   if (
     !/insufficient.*(?:credit|balance)|(?:credit|balance).*(?:exhaust|deplet|insufficient)|payment required/.test(
       message,
@@ -27,6 +56,12 @@ export function observeProviderFailure(
     state.openrouter = "exhausted";
     state.openrouterLastError = "openrouter_credit_exhausted";
   });
+}
+
+function isDeepSeekTransportFailure(message: string) {
+  return /deepseek.*(?:missing|not configured|unavailable|unauthori[sz]ed|forbidden|api[ _-]?key)|(?:missing|invalid|unauthori[sz]ed|forbidden).*(?:api[ _-]?key|provider|deepseek)|(?:provider|model).*(?:not found|unavailable|unknown)/.test(
+    message,
+  );
 }
 
 const routes = new Map<string, ProviderDecision & { recordedAt: string }>();
