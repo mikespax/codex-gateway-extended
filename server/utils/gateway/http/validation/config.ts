@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { GatewayConfig } from "~~/shared/types";
-import { DEFAULT_BARK_GROUP, DEFAULT_BARK_SERVER_URL } from "~~/shared/config";
+import {
+  DEFAULT_BARK_GROUP,
+  DEFAULT_BARK_SERVER_URL,
+  normalizeProviderRouting,
+} from "~~/shared/config";
 import { trimmedOrFallback, trimmedOrNull } from "~~/shared/utils/strings";
 import { optionalPositiveInt } from "./common";
 import { hostBaseSchema, validateHostProxy } from "./hosts-projects";
@@ -36,6 +40,14 @@ export const notificationSettingsSchema = z
       }),
   })
   .strict();
+
+export const providerRoutingSettingsSchema = z
+  .object({
+    mode: z.enum(["openai", "hybrid", "deepseek"]).default("openai"),
+    useOpenRouterCreditsFirst: z.boolean().default(true),
+  })
+  .strict()
+  .default({ mode: "openai", useOpenRouterCreditsFirst: true });
 
 export const gatewayConfigSchema = z
   .object({
@@ -75,6 +87,7 @@ export const gatewayConfigSchema = z
         group: DEFAULT_BARK_GROUP,
       },
     }),
+    providerRouting: providerRoutingSettingsSchema,
   })
   .strict();
 
@@ -134,5 +147,6 @@ export function parseGatewayConfig(body: unknown): GatewayConfig {
         group: trimmedOrFallback(input.notifications.bark.group, DEFAULT_BARK_GROUP),
       },
     },
+    providerRouting: normalizeProviderRouting(input.providerRouting),
   };
 }

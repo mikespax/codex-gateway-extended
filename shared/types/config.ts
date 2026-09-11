@@ -1,4 +1,5 @@
 import type { HostRecord, ProjectRecord } from "./records";
+import type { ProviderRoutingSettings } from "./provider-routing";
 
 export interface PinnedThreadRecord {
   hostId: number;
@@ -29,4 +30,6 @@ export interface GatewayConfig {
   projects: ProjectRecord[];
   pinnedThreads: PinnedThreadRecord[];
   notifications: GatewayNotificationSettings;
+  /** Optional for backwards compatibility with encrypted configs written before routing existed. */
+  providerRouting?: ProviderRoutingSettings;
 }

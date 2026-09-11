@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { openApp } from "./helpers/app";
 import { installRealtimeThreadSnapshotMock, seedGatewayThread } from "./helpers/gateway-store";
 import { defaultGatewayHost, defaultGatewayProject } from "./fixtures/thread-history";
+import { gatewayThreadFixture } from "./fixtures/gateway-thread";
 
 test("collapses the desktop sidebar and restores the saved layout", async ({ page }) => {
   await openApp(page);
@@ -497,6 +498,46 @@ test("does not reorder chat activity while a turn is still running", async ({ pa
       ),
     )
     .toEqual(["stable-chat-b", "stable-chat-a"]);
+});
+
+test("keeps the measured thread size when an opened snapshot omits it", async ({ page }) => {
+  await openApp(page);
+  const host = { ...defaultGatewayHost(106), name: "Thread size host" };
+  const project = {
+    ...defaultGatewayProject(host.id, 206),
+    name: "Thread size project",
+    remotePath: "/workspace/thread-size",
+  };
+  const measured = gatewayThreadFixture(
+    { id: "measured-thread", name: "Measured thread", threadBytes: 123 * 1_024 * 1_024 },
+    { hostId: host.id, projectId: project.id },
+  );
+
+  await page.evaluate(
+    ({ host, project, measured }) => {
+      const driver = window.__codexGatewayE2e;
+      if (!driver) throw new Error("Gateway E2E driver is unavailable");
+      driver.catalog.hosts = [host];
+      driver.catalog.projects = [project];
+      driver.activity.upsertGatewayThread(measured, [project]);
+      const openedSnapshot = { ...measured };
+      delete openedSnapshot.threadBytes;
+      driver.activity.upsertGatewayThread(openedSnapshot, [project], {
+        preserveActivity: true,
+      });
+    },
+    { host, project, measured },
+  );
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        ({ hostId, threadId }) =>
+          window.__codexGatewayE2e?.activity.summariesByKey[`${hostId}:${threadId}`]?.threadBytes,
+        { hostId: host.id, threadId: measured.id },
+      ),
+    )
+    .toBe(123 * 1_024 * 1_024);
 });
 
 test("sorts pinned threads for display without rewriting persisted pin order", async ({ page }) => {

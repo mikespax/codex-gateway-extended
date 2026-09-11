@@ -296,6 +296,11 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
           }
         : {}),
     };
+    const threadBytes =
+      existing?.threadBytes !== undefined &&
+      (summary.threadBytes === null || summary.threadBytes === undefined)
+        ? existing.threadBytes
+        : summary.threadBytes;
     summariesByKey.value = {
       ...summariesByKey.value,
       [key]: {
@@ -310,6 +315,7 @@ export const useGatewayThreadActivityStore = defineStore("gateway-thread-activit
         parentThreadId: summary.parentThreadId ?? existing?.parentThreadId ?? null,
         agentNickname: summary.agentNickname ?? existing?.agentNickname ?? null,
         agentRole: summary.agentRole ?? existing?.agentRole ?? null,
+        threadBytes,
         // Classification is sticky because `thread/started` can contain agent metadata before a
         // later `thread/read` supplies parentThreadId.
         isSubAgent: summary.isSubAgent || existing?.isSubAgent === true,

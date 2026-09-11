@@ -237,7 +237,6 @@ export class ThreadOpenService {
       },
     );
   }
-
   private shouldValidateCachedThread(hostId: number, threadId: string) {
     const key = refreshKey(hostId, threadId);
     const lastValidatedAt = this.lastCacheValidationAt.get(key);

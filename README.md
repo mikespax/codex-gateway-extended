@@ -194,6 +194,21 @@ Core rules:
 
 ## Quick Start
 
+## Provider Routing
+
+Keep existing Codex conversations while selecting one of the three supported policies:
+
+```text
+codex-provider openai
+codex-provider hybrid
+codex-provider deepseek
+codex-provider status
+```
+
+The Settings panel provides the same selector and an optional OpenRouter-credits-first transport
+toggle. See [docs/smart-provider-routing.md](docs/smart-provider-routing.md) for the routing,
+vision, quota, continuity, and rollback details.
+
 Prerequisites: Docker with Compose, Git, and network access from Gateway to the SSH hosts you want to manage.
 
 ```bash
@@ -255,20 +270,20 @@ configuration remain run-specific.
 
 Environment variables:
 
-| Variable                      | Required          | Description                                                                                             |
-| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------- |
-| `CODEX_GATEWAY_CONFIG_SECRET` | Yes in production | Stable secret used to encrypt stored host/project/thread config.                                        |
-| `CODEX_GATEWAY_DB_PATH`       | No                | SQLite database path. Defaults to the app data path; Docker uses `/data/codex-gateway.db`.              |
-| `CODEX_GATEWAY_CLOUDFLARE_ACCESS_ISSUER` | Cloudflare browser auth | HTTPS Cloudflare Access team issuer used to verify the origin JWT.                                      |
-| `CODEX_GATEWAY_CLOUDFLARE_ACCESS_AUDIENCE` | Optional | If set, require this Cloudflare Access application audience claim.                                      |
-| `CODEX_GATEWAY_SUBSCRIPTION_PRICE_USD` | No | Optional manual subscription price used only for the monthly API-equivalent payback comparison. |
-| `CODEX_GATEWAY_USAGE_PERIOD_START` | No | Optional ISO timestamp for the current billing period; defaults to the first day of the UTC month. |
-| `HOST`                        | No                | Nuxt listen host. Docker uses `0.0.0.0`.                                                                |
-| `PORT`                        | No                | Nuxt listen port. Docker uses `3000`.                                                                   |
-| `BROWSER_PREVIEW_DOMAIN`      | Browser preview   | Parent domain for isolated preview origins; configure wildcard DNS for `p-*.your-domain`.               |
-| `BROWSER_PREVIEW_SECRET`      | No                | HMAC secret for stable per-user/Host/target preview origins. Defaults to `CODEX_GATEWAY_CONFIG_SECRET`. |
-| `BROWSER_PREVIEW_SCHEME`      | No                | Public preview scheme, `https` by default. Use `http` only for local E2E/development.                   |
-| `BROWSER_PREVIEW_PUBLIC_PORT` | No                | Optional public port included in preview origins for local development.                                 |
+| Variable                                   | Required                | Description                                                                                             |
+| ------------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| `CODEX_GATEWAY_CONFIG_SECRET`              | Yes in production       | Stable secret used to encrypt stored host/project/thread config.                                        |
+| `CODEX_GATEWAY_DB_PATH`                    | No                      | SQLite database path. Defaults to the app data path; Docker uses `/data/codex-gateway.db`.              |
+| `CODEX_GATEWAY_CLOUDFLARE_ACCESS_ISSUER`   | Cloudflare browser auth | HTTPS Cloudflare Access team issuer used to verify the origin JWT.                                      |
+| `CODEX_GATEWAY_CLOUDFLARE_ACCESS_AUDIENCE` | Optional                | If set, require this Cloudflare Access application audience claim.                                      |
+| `CODEX_GATEWAY_SUBSCRIPTION_PRICE_USD`     | No                      | Optional manual subscription price used only for the monthly API-equivalent payback comparison.         |
+| `CODEX_GATEWAY_USAGE_PERIOD_START`         | No                      | Optional ISO timestamp for the current billing period; defaults to the first day of the UTC month.      |
+| `HOST`                                     | No                      | Nuxt listen host. Docker uses `0.0.0.0`.                                                                |
+| `PORT`                                     | No                      | Nuxt listen port. Docker uses `3000`.                                                                   |
+| `BROWSER_PREVIEW_DOMAIN`                   | Browser preview         | Parent domain for isolated preview origins; configure wildcard DNS for `p-*.your-domain`.               |
+| `BROWSER_PREVIEW_SECRET`                   | No                      | HMAC secret for stable per-user/Host/target preview origins. Defaults to `CODEX_GATEWAY_CONFIG_SECRET`. |
+| `BROWSER_PREVIEW_SCHEME`                   | No                      | Public preview scheme, `https` by default. Use `http` only for local E2E/development.                   |
+| `BROWSER_PREVIEW_PUBLIC_PORT`              | No                      | Optional public port included in preview origins for local development.                                 |
 
 Create an admin user:
 

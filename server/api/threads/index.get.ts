@@ -24,7 +24,6 @@ import type { HostWithSecret } from "../../utils/gateway/infra/ssh/ssh-types";
 import { trimmedOrNull } from "~~/shared/utils/strings";
 import { gatewayThreadFromAppServer } from "../../utils/gateway/protocol/gateway-thread";
 import { HOT_THREAD_LIST_LIMIT } from "~~/shared/config";
-
 const PROJECT_DIRECTORY_AVAILABILITY_TTL_MS = 60_000;
 interface ProjectDirectoryAvailabilityCacheEntry {
   fingerprint: string;
@@ -44,6 +43,9 @@ export default defineGatewayEventHandler(async (event) => {
   const effectiveLimit = historicalLookup
     ? query.limit
     : Math.min(query.limit, HOT_THREAD_LIST_LIMIT);
+  // Normal sidebar refreshes must not scan every JSONL rollout. The state DB already contains the
+  // bounded hot catalog; an explicit search is the opt-in path for historical rollout scanning.
+  const useStateDbOnly = query.useRemoteStateIndexOnly ?? !historicalLookup;
   const discoveryGeneration =
     userId === undefined ? null : threadProjectDiscovery.captureGeneration(userId, host.id);
   setGatewayRequestLogContext(event, "threads/list", {
@@ -53,7 +55,7 @@ export default defineGatewayEventHandler(async (event) => {
     limit: effectiveLimit,
     cursor: query.cursor ?? null,
     searchTerm: searchTerm ?? null,
-    useRemoteStateIndexOnly: query.useRemoteStateIndexOnly ?? false,
+    useRemoteStateIndexOnly: useStateDbOnly,
   });
 
   const listParams = withAllThreadSources({
@@ -61,7 +63,7 @@ export default defineGatewayEventHandler(async (event) => {
     cursor: trimmedOrNull(query.cursor),
     cwd: trimmedOrNull(query.cwd) ?? undefined,
     searchTerm: searchTerm ?? undefined,
-    useStateDbOnly: query.useRemoteStateIndexOnly ?? false,
+    useStateDbOnly,
   });
   const page = await threadBroker.listThreads(host, listParams);
   if (userId !== undefined && discoveryGeneration !== null) {
@@ -89,6 +91,7 @@ export default defineGatewayEventHandler(async (event) => {
     searchTerm,
   );
   let threadsWithStorage = gatewayThreads;
+  const threadStoragePending = threadStorage.needsRefresh(host, gatewayThreads);
   const cachedSizes = threadStorage.cached(host, gatewayThreads);
   threadsWithStorage = gatewayThreads.map((thread) => ({
     ...thread,
@@ -101,6 +104,9 @@ export default defineGatewayEventHandler(async (event) => {
   return {
     ...page,
     data: threadsWithStorage,
+    // The first list response intentionally remains fast. The browser uses this hint to refresh
+    // once after the six-hour-bounded advisory scan fills the in-memory cache.
+    threadStoragePending,
     projects,
     projectDirectoryAvailability,
   };
