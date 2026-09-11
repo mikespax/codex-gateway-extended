@@ -118,7 +118,7 @@ function chooseRoute(state, period) {
     : {
         provider: "deepseek",
         transport: "deepseek",
-        model: "deepseek-flash",
+        model: "deepseek-v4-flash",
       };
 }
 

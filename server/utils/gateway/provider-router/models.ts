@@ -1,11 +1,11 @@
 import { getProviderRouterState, updateProviderRouterState } from "./state";
 import { recordFromUnknown } from "~~/shared/utils/records";
 
-// DeepSeek V4.1 Flash is the current API model and has native multimodal support.
-// Keep one explicit model for text and image turns; the older V4 slugs are compatibility
-// aliases and should not be the Gateway's preferred request identifiers.
-export const DIRECT_DEEPSEEK_TEXT_MODEL = "deepseek-flash";
-export const DIRECT_DEEPSEEK_VISION_MODEL = "deepseek-flash";
+// Direct DeepSeek uses the official API identifiers. The V4.1 Flash slug is an
+// OpenRouter catalog identifier; the direct Responses API currently exposes the
+// rolling text model as deepseek-v4-flash and the image-capable model separately.
+export const DIRECT_DEEPSEEK_TEXT_MODEL = "deepseek-v4-flash";
+export const DIRECT_DEEPSEEK_VISION_MODEL = "deepseek-v4-flash-vision-exp";
 const MODEL_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
 
 const OPENROUTER_CURRENT_FLASH_MODEL = "deepseek/deepseek-v4.1-flash";

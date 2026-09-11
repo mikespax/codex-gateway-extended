@@ -34,8 +34,8 @@ void test("all 288 mode, pricing, quota, credit, image and transport combination
                 containsImages,
                 useOpenRouterCreditsFirst,
                 requestedOpenAiModel: "gpt-5.6-luna",
-                directTextModel: "deepseek-flash",
-                directVisionModel: "deepseek-flash",
+                directTextModel: "deepseek-v4-flash",
+                directVisionModel: "deepseek-v4-flash-vision-exp",
                 openRouterTextModel: "deepseek/deepseek-v4.1-flash",
                 openRouterVisionModel: "deepseek/deepseek-v4.1-flash",
               });
@@ -60,7 +60,7 @@ void test("all 288 mode, pricing, quota, credit, image and transport combination
 });
 
 void test("OpenAI routing replaces a stale DeepSeek model with the configured OpenAI default", () => {
-  const parameters = providerStartParameters("deepseek-flash");
+  const parameters = providerStartParameters("deepseek-v4-flash");
   assert.equal(parameters.modelProvider, "openai");
   assert.equal(parameters.model, "gpt-5.6-luna");
 });
@@ -152,7 +152,7 @@ void test("DeepSeek health is unknown until a turn completes and cannot remain f
         logicalProvider: "deepseek",
         effectiveProvider: "deepseek",
         transport: "deepseek",
-        model: "deepseek-flash",
+        model: "deepseek-v4-flash",
         containsImages: false,
         deepseekPeriod: "off_peak",
         reason: "deepseek_only_direct",
