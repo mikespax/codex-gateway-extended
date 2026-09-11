@@ -94,10 +94,10 @@ void test("provider matrix enforces all three modes and quota fallback", () => {
     period: "off_peak" as const,
     containsImages: false,
     requestedOpenAiModel: "gpt-5.6-luna",
-    openRouterTextModel: "deepseek/deepseek-v4-flash",
-    openRouterVisionModel: "deepseek/deepseek-v4-flash-vision-exp",
-    directTextModel: "deepseek-v4-flash",
-    directVisionModel: "deepseek-v4-flash-vision-exp",
+    openRouterTextModel: "deepseek/deepseek-v4.1-flash",
+    openRouterVisionModel: "deepseek/deepseek-v4.1-flash",
+    directTextModel: "deepseek-flash",
+    directVisionModel: "deepseek-flash",
   };
   assert.equal(
     routeProvider({ ...base, mode: "openai", openaiQuota: "available" }).transport,
@@ -128,7 +128,7 @@ void test("provider matrix enforces all three modes and quota fallback", () => {
   assert.equal(
     routeProvider({ ...base, mode: "deepseek", openaiQuota: "available", containsImages: true })
       .model,
-    "deepseek/deepseek-v4-flash-vision-exp",
+    "deepseek/deepseek-v4.1-flash",
   );
   assert.equal(
     routeProvider({ ...base, mode: "deepseek", openaiQuota: "available", openrouter: "exhausted" })

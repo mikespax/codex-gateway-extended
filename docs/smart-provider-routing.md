@@ -17,8 +17,8 @@ The Settings > Provider routing panel exposes exactly these primary modes:
   app-server has no DeepSeek key), hybrid mode may fall back to OpenAI only when the OpenAI
   allowance is not exhausted. That failover is logged and never occurs in DeepSeek-only mode. Set
   `CODEX_PROVIDER_HYBRID_OPENAI_FALLBACK=false` to make such a failure fail closed instead.
-- **DeepSeek only** — OpenAI is never selected. Text uses `deepseek-v4-flash`; image-bearing input
-  uses `deepseek-v4-flash-vision-exp`.
+- **DeepSeek only** — OpenAI is never selected. V4.1 Flash uses the direct API model
+  `deepseek-flash` for both text and native multimodal input.
 
 DeepSeek's published weekday peak windows are 01:00–04:00 UTC and 06:00–10:00 UTC. Weekends are
 off-peak. The policy is centralized in `server/utils/gateway/provider-router/pricing.ts`.

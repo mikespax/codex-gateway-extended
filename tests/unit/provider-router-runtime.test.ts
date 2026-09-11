@@ -33,10 +33,10 @@ void test("all 288 mode, pricing, quota, credit, image and transport combination
                 containsImages,
                 useOpenRouterCreditsFirst,
                 requestedOpenAiModel: "gpt-5.6-luna",
-                directTextModel: "deepseek-v4-flash",
-                directVisionModel: "deepseek-v4-flash-vision-exp",
-                openRouterTextModel: "deepseek/deepseek-v4-flash",
-                openRouterVisionModel: "deepseek/deepseek-v4-flash-vision-exp",
+                directTextModel: "deepseek-flash",
+                directVisionModel: "deepseek-flash",
+                openRouterTextModel: "deepseek/deepseek-v4.1-flash",
+                openRouterVisionModel: "deepseek/deepseek-v4.1-flash",
               });
               const deepseek =
                 mode === "deepseek" ||
@@ -50,8 +50,8 @@ void test("all 288 mode, pricing, quota, credit, image and transport combination
                     ? "openrouter"
                     : "deepseek",
                 );
-                assert.equal(result.model?.includes("vision"), containsImages);
-                assert.ok(result.model?.includes("v4-flash"));
+                assert.ok(result.model !== null && result.model !== undefined);
+                assert.ok(result.model.includes("flash"));
               } else assert.equal(result.transport, "openai");
               cases++;
             }
@@ -111,7 +111,7 @@ void test("asynchronous OpenRouter insufficient-credit event persists exhaustion
         logicalProvider: "openai",
         effectiveProvider: "deepseek",
         transport: "openrouter",
-        model: "deepseek/deepseek-v4-flash",
+        model: "deepseek/deepseek-v4.1-flash",
         containsImages: false,
         deepseekPeriod: "off_peak",
         reason: "deepseek_only",
@@ -145,7 +145,7 @@ void test("DeepSeek health is unknown until a turn completes and cannot remain f
         logicalProvider: "deepseek",
         effectiveProvider: "deepseek",
         transport: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         containsImages: false,
         deepseekPeriod: "off_peak",
         reason: "deepseek_only_direct",

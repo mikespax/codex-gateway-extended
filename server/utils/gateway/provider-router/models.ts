@@ -1,9 +1,14 @@
 import { getProviderRouterState, updateProviderRouterState } from "./state";
 import { recordFromUnknown } from "~~/shared/utils/records";
 
-export const DIRECT_DEEPSEEK_TEXT_MODEL = "deepseek-v4-flash";
-export const DIRECT_DEEPSEEK_VISION_MODEL = "deepseek-v4-flash-vision-exp";
+// DeepSeek V4.1 Flash is the current API model and has native multimodal support.
+// Keep one explicit model for text and image turns; the older V4 slugs are compatibility
+// aliases and should not be the Gateway's preferred request identifiers.
+export const DIRECT_DEEPSEEK_TEXT_MODEL = "deepseek-flash";
+export const DIRECT_DEEPSEEK_VISION_MODEL = "deepseek-flash";
 const MODEL_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
+
+const OPENROUTER_CURRENT_FLASH_MODEL = "deepseek/deepseek-v4.1-flash";
 
 export function deepseekModelForImage(containsImages: boolean) {
   return containsImages ? DIRECT_DEEPSEEK_VISION_MODEL : DIRECT_DEEPSEEK_TEXT_MODEL;
@@ -13,11 +18,12 @@ export function openrouterModelForImage(containsImages: boolean) {
   const cached = getProviderRouterState().openrouterModels;
   return (
     (containsImages
-      ? cached.vision
-      : cached.text?.includes("v4-flash") === true
+      ? isSupportedOpenRouterFlashModel(cached.vision)
+        ? cached.vision
+        : null
+      : isSupportedOpenRouterFlashModel(cached.text)
         ? cached.text
-        : null) ??
-    (containsImages ? "deepseek/deepseek-v4-flash-vision-exp" : "deepseek/deepseek-v4-flash")
+        : null) ?? OPENROUTER_CURRENT_FLASH_MODEL
   );
 }
 
@@ -26,7 +32,7 @@ export async function refreshOpenRouterModels(force = false) {
   const cached = getProviderRouterState().openrouterModels;
   if (
     !force &&
-    cached.text?.includes("v4-flash") === true &&
+    isSupportedOpenRouterFlashModel(cached.text) &&
     cached.fetchedAt !== null &&
     Date.now() - Date.parse(cached.fetchedAt) < MODEL_CACHE_TTL_MS
   ) {
@@ -73,17 +79,26 @@ export async function refreshOpenRouterModels(force = false) {
 function chooseModel(ids: string[], vision: boolean) {
   const candidates = ids.filter((id) => {
     const normalized = id.toLowerCase();
-    if (!normalized.includes("deepseek") || !normalized.includes("v4")) return false;
-    if (vision) return normalized.includes("vision") && normalized.includes("flash");
-    return (
-      normalized.includes("flash") &&
-      !normalized.includes("vision") &&
-      !normalized.includes(":") &&
-      !normalized.startsWith("~")
-    );
+    if (!normalized.includes("deepseek") || !normalized.includes("flash")) return false;
+    if (normalized.includes(":")) return false;
+    if (normalized.startsWith("~")) return false;
+    if (vision) return normalized.includes("v4.1-flash") || normalized.includes("vision");
+    return !normalized.includes("vision");
   });
   const preferred = vision
-    ? ["deepseek/deepseek-v4-flash-vision-exp"]
-    : ["deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-flash-0731"];
+    ? [OPENROUTER_CURRENT_FLASH_MODEL, "deepseek/deepseek-v4-flash-vision-exp"]
+    : [
+        OPENROUTER_CURRENT_FLASH_MODEL,
+        "deepseek/deepseek-v4-flash",
+        "deepseek/deepseek-v4-flash-0731",
+      ];
   return preferred.find((id) => candidates.includes(id)) ?? candidates.sort()[0] ?? null;
+}
+
+function isSupportedOpenRouterFlashModel(model: string | null) {
+  if (model === null) return false;
+  const normalized = model.toLowerCase();
+  return (
+    normalized.includes("deepseek") && normalized.includes("flash") && !normalized.includes(":")
+  );
 }
