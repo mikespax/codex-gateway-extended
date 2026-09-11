@@ -100,7 +100,19 @@ export function useThreadSettingsControls() {
   );
   const activeModelLabel = computed(() => {
     const model = activeModelRecord.value;
-    const rawLabel = firstNonEmptyString([model?.displayName, model?.model, activeModel.value]);
+    // Some app-server/catalog versions expose a generic translated display name (for example
+    // `模型`) instead of the model's human-readable name. Prefer the stable model id in that
+    // case so the compact Luna/Astra/Terra mapping can still identify the selected model. This is
+    // presentation-only; it never changes the model sent to the app-server.
+    const displayName = model?.displayName?.trim();
+    const usableDisplayName =
+      displayName !== undefined &&
+      displayName !== "" &&
+      displayName !== "模型" &&
+      displayName.toLowerCase() !== "model"
+        ? displayName
+        : null;
+    const rawLabel = firstNonEmptyString([usableDisplayName, model?.model, activeModel.value]);
     return compactModelLabel(rawLabel) ?? t("app.model");
   });
   const activeEffortValue = computed(() => {
