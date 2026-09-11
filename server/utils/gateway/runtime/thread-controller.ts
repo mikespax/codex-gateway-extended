@@ -17,6 +17,7 @@ import type { ThreadOpenSnapshot } from "./types";
 import { createThreadNotificationResolvers } from "./notification-rpc-resolvers";
 import { GATEWAY_APPROVAL_POLICY } from "../protocol/thread-payload";
 import type { EffectiveProvider } from "../provider-router/types";
+import { deepseekModelForImage } from "../provider-router/models";
 
 export class ThreadController {
   readonly client: CodexRpcClient;
@@ -220,6 +221,27 @@ export class ThreadController {
         provider === "openai" &&
         (currentProvider === "deepseek" || hasProviderBoundaryFailure)
       ) {
+        // A previous failed switch may already have left the app-server's current provider set
+        // to OpenAI while the rollout still contains DeepSeek items. In that stale state the
+        // compaction request itself is rejected by OpenAI. First resume the existing rollout on
+        // DeepSeek, whose transport accepts the mixed history, then compact and return to OpenAI.
+        if (hasProviderBoundaryFailure && currentProvider !== "deepseek") {
+          if (this.subscribed) {
+            await this.client.request("thread/unsubscribe", { threadId: this.threadId }, 15_000);
+            this.subscribed = false;
+          }
+          const deepseekResume = await this.requestResume({
+            threadId: this.threadId,
+            excludeTurns: true,
+            modelProvider: "deepseek",
+            model: deepseekModelForImage(false),
+          });
+          if (deepseekResume.modelProvider !== "deepseek") {
+            throw new Error(
+              `Codex app-server resumed provider ${deepseekResume.modelProvider}, expected deepseek for history recovery`,
+            );
+          }
+        }
         await this.compactHistoryForProviderSwitch();
       }
       if (this.subscribed) {
