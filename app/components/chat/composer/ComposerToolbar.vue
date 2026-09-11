@@ -23,6 +23,7 @@ import {
 } from "@codex-gateway/ui/dropdown-menu";
 import ContextUsageMeter from "@/components/chat/composer/ContextUsageMeter.vue";
 import ModelEffortPicker from "@/components/chat/composer/ModelEffortPicker.vue";
+import ThreadProviderRoutingPicker from "@/components/chat/composer/ThreadProviderRoutingPicker.vue";
 
 defineProps<{
   uploadingAttachments: boolean;
@@ -106,6 +107,7 @@ const emit = defineEmits<{
       </DropdownMenu>
     </div>
     <div class="ml-auto flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
+      <ThreadProviderRoutingPicker />
       <ContextUsageMeter :token-usage="selectedThreadTokenUsage" />
       <div class="min-w-0">
         <ModelEffortPicker

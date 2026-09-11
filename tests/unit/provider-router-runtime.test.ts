@@ -6,10 +6,15 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { recordFromUnknown } from "../../shared/utils/records";
 import { routeProvider } from "../../server/utils/gateway/provider-router/matrix";
-import { providerStartParameters } from "../../server/utils/gateway/provider-router/policy";
+import {
+  chooseProvider,
+  providerStartParameters,
+} from "../../server/utils/gateway/provider-router/policy";
 import { classifyOpenAiFailure } from "../../server/utils/gateway/provider-router/quota";
 import {
   getProviderRouterState,
+  getThreadProviderRouting,
+  setThreadProviderRouting,
   updateProviderRouterState,
   resetProviderRouterStateForTests,
 } from "../../server/utils/gateway/provider-router/state";
@@ -63,6 +68,44 @@ void test("OpenAI routing replaces a stale DeepSeek model with the configured Op
   const parameters = providerStartParameters("deepseek-v4-flash");
   assert.equal(parameters.modelProvider, "openai");
   assert.equal(parameters.model, "gpt-5.6-luna");
+});
+
+void test("per-thread routing overrides persist and take precedence over the global mode", () => {
+  const path = join(mkdtempSync(join(tmpdir(), "provider-thread-route-")), "state.json");
+  const previous = process.env.CODEX_PROVIDER_ROUTER_STATE_FILE;
+  process.env.CODEX_PROVIDER_ROUTER_STATE_FILE = path;
+  try {
+    resetProviderRouterStateForTests();
+    updateProviderRouterState((state) => {
+      state.settings = { mode: "openai", useOpenRouterCreditsFirst: false };
+    });
+    setThreadProviderRouting(4, "gif-thread", {
+      mode: "deepseek",
+      useOpenRouterCreditsFirst: false,
+    });
+    assert.deepEqual(getThreadProviderRouting(4, "gif-thread"), {
+      mode: "deepseek",
+      useOpenRouterCreditsFirst: false,
+    });
+    resetProviderRouterStateForTests();
+    assert.deepEqual(getThreadProviderRouting(4, "gif-thread"), {
+      mode: "deepseek",
+      useOpenRouterCreditsFirst: false,
+    });
+    const decision = chooseProvider(
+      { text: "read-only status" },
+      new Date("2026-09-11T12:00:00.000Z"),
+      getThreadProviderRouting(4, "gif-thread"),
+    );
+    assert.equal(decision.transport, "deepseek");
+    assert.equal(decision.model, "deepseek-v4-flash");
+    setThreadProviderRouting(4, "gif-thread", null);
+    assert.equal(getThreadProviderRouting(4, "gif-thread"), null);
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_PROVIDER_ROUTER_STATE_FILE;
+    else process.env.CODEX_PROVIDER_ROUTER_STATE_FILE = previous;
+    resetProviderRouterStateForTests();
+  }
 });
 
 void test("exhausted credit survives process reload and clears only on explicit CLI recheck", () => {

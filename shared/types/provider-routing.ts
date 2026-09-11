@@ -7,6 +7,9 @@ export interface ProviderRoutingSettings {
   useOpenRouterCreditsFirst: boolean;
 }
 
+/** A complete per-thread override. Missing entries inherit the global policy. */
+export type ThreadProviderRoutingOverride = ProviderRoutingSettings;
+
 export type ProviderQuotaState = "available" | "exhausted" | "unknown";
 export type ProviderAvailability = "available" | "exhausted" | "unavailable" | "unknown";
 

@@ -3,6 +3,7 @@ import type {
   ProviderQuotaState,
   ProviderRoutingMode,
   ProviderRoutingSettings,
+  ThreadProviderRoutingOverride,
 } from "~~/shared/types";
 
 export type EffectiveProvider = "openai" | "deepseek";
@@ -34,6 +35,7 @@ export interface ProviderRouterRuntimeState {
     vision: string | null;
     fetchedAt: string | null;
   };
+  threadOverrides: Record<string, ThreadProviderRoutingOverride>;
 }
 
 export interface ProviderRouterStatus extends ProviderDecision {

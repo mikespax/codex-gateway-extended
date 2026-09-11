@@ -109,6 +109,7 @@ export type {
   ProviderRoutingMode,
   ProviderRoutingSettings,
   ProviderRoutingStatus,
+  ThreadProviderRoutingOverride,
 } from "./types/provider-routing";
 export type {
   FilePreviewDocument,

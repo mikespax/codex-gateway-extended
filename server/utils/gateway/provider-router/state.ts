@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { ProviderRouterRuntimeState } from "./types";
+import { normalizeProviderRouting } from "~~/shared/config";
+import type { ProviderRoutingSettings } from "~~/shared/types";
 import { recordFromUnknown } from "~~/shared/utils/records";
 
 const DEFAULT_STATE: ProviderRouterRuntimeState = {
@@ -13,6 +15,7 @@ const DEFAULT_STATE: ProviderRouterRuntimeState = {
   openrouter: "unknown",
   openrouterLastError: null,
   openrouterModels: { text: null, vision: null, fetchedAt: null },
+  threadOverrides: {},
 };
 
 let loaded = false;
@@ -66,6 +69,27 @@ export function updateProviderRouterState(update: (state: ProviderRouterRuntimeS
   return current;
 }
 
+export function getThreadProviderRouting(hostId: number, threadId: string) {
+  const state = loadProviderRouterState();
+  return state.threadOverrides[threadProviderRoutingKey(hostId, threadId)] ?? null;
+}
+
+export function setThreadProviderRouting(
+  hostId: number,
+  threadId: string,
+  settings: ProviderRoutingSettings | null,
+) {
+  const key = threadProviderRoutingKey(hostId, threadId);
+  return updateProviderRouterState((state) => {
+    if (settings === null) delete state.threadOverrides[key];
+    else state.threadOverrides[key] = normalizeProviderRouting(settings);
+  });
+}
+
+export function threadProviderRoutingKey(hostId: number, threadId: string) {
+  return `${hostId}:${threadId}`;
+}
+
 export function persistProviderRouterState(state: ProviderRouterRuntimeState) {
   const path = providerRouterStatePath();
   try {
@@ -106,7 +130,25 @@ function mergeState(value: Partial<ProviderRouterRuntimeState>): ProviderRouterR
       ...DEFAULT_STATE.openrouterModels,
       ...(value.openrouterModels ?? DEFAULT_STATE.openrouterModels),
     },
+    threadOverrides: normalizeThreadOverrides(value.threadOverrides),
   };
+}
+
+function normalizeThreadOverrides(value: unknown) {
+  const record = recordFromUnknown(value);
+  if (record === null) return {};
+  const result: ProviderRouterRuntimeState["threadOverrides"] = {};
+  for (const [key, candidate] of Object.entries(record)) {
+    const settings = recordFromUnknown(candidate);
+    if (settings === null) continue;
+    const mode = settings.mode;
+    if (mode !== "openai" && mode !== "hybrid" && mode !== "deepseek") continue;
+    result[key] = normalizeProviderRouting({
+      mode,
+      useOpenRouterCreditsFirst: settings.useOpenRouterCreditsFirst !== false,
+    });
+  }
+  return result;
 }
 
 function clone<T>(value: T): T {

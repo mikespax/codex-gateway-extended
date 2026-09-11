@@ -6,6 +6,7 @@ import { turnInputContainsImage } from "./image-detection";
 import { deepseekModelForImage, openrouterModelForImage } from "./models";
 import { getProviderRouterState, updateProviderRouterState } from "./state";
 import type { ProviderDecision, ProviderRouterStatus } from "./types";
+import type { ProviderRoutingSettings } from "~~/shared/types";
 import { routeProvider } from "./matrix";
 
 // A provider switch must replace a thread's previous DeepSeek model. Passing null to
@@ -13,7 +14,11 @@ import { routeProvider } from "./matrix";
 // turn fail with "model is not supported when using Codex with a ChatGPT account".
 export const DEFAULT_OPENAI_MODEL = "gpt-5.6-luna";
 
-export function chooseProvider(input: TurnStartInput, now = new Date()): ProviderDecision {
+export function chooseProvider(
+  input: TurnStartInput,
+  now = new Date(),
+  settingsOverride?: ProviderRoutingSettings | null,
+): ProviderDecision {
   let runtime = getProviderRouterState();
   if (
     runtime.openaiQuota === "exhausted" &&
@@ -29,7 +34,9 @@ export function chooseProvider(input: TurnStartInput, now = new Date()): Provide
     runtime = getProviderRouterState();
   }
   const settings =
-    runtime.settings ?? normalizeProviderRouting(currentGatewayMemoryState().providerRouting);
+    settingsOverride ??
+    runtime.settings ??
+    normalizeProviderRouting(currentGatewayMemoryState().providerRouting);
   const containsImages = turnInputContainsImage(input);
   const period = deepSeekPricingPeriod(now);
   const matrix = routeProvider({
@@ -57,10 +64,15 @@ export function chooseProvider(input: TurnStartInput, now = new Date()): Provide
   };
 }
 
-export function providerRouterStatus(now = new Date()): ProviderRouterStatus {
+export function providerRouterStatus(
+  now = new Date(),
+  settingsOverride?: ProviderRoutingSettings | null,
+): ProviderRouterStatus {
   const runtime = getProviderRouterState();
   const settings =
-    runtime.settings ?? normalizeProviderRouting(currentGatewayMemoryState().providerRouting);
+    settingsOverride ??
+    runtime.settings ??
+    normalizeProviderRouting(currentGatewayMemoryState().providerRouting);
   const period = deepSeekPricingPeriod(now);
   const matrix = routeProvider({
     mode: settings.mode,

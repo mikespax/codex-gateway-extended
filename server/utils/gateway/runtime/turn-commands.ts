@@ -12,7 +12,11 @@ import { parseTurnStartResponse, parseTurnSteerResponse } from "~~/shared/runtim
 import { turnUsageAccounting } from "../usage/turn-usage-accounting";
 import { chooseProvider, DEFAULT_OPENAI_MODEL } from "../provider-router/policy";
 import { classifyOpenAiFailure } from "../provider-router/quota";
-import { getProviderRouterState, updateProviderRouterState } from "../provider-router/state";
+import {
+  getProviderRouterState,
+  getThreadProviderRouting,
+  updateProviderRouterState,
+} from "../provider-router/state";
 import { logProviderDecision } from "../provider-router/logging";
 import type { ProviderDecision } from "../provider-router/types";
 import type { ThreadController } from "./thread-controller";
@@ -31,7 +35,8 @@ export class ThreadTurnCommandService {
     );
     return this.registry.withScopedSubscription(host, threadId, async (controller) => {
       const startedAt = Date.now();
-      let decision = chooseProvider(input);
+      const threadRoutingOverride = getThreadProviderRouting(host.id, threadId);
+      let decision = chooseProvider(input, new Date(), threadRoutingOverride);
       if (controller.isFreshThread() && decision.transport === "openrouter") {
         decision = {
           ...decision,
@@ -82,7 +87,7 @@ export class ThreadTurnCommandService {
             state.openaiQuotaResetAt = classification.resetAt;
             state.openaiQuotaReason = classification.reasonCode;
           });
-          decision = chooseProvider(input);
+          decision = chooseProvider(input, new Date(), threadRoutingOverride);
           await controller.ensureProvider(
             decision.transport === "openrouter" ? "openrouter" : "deepseek",
             decision.model,
