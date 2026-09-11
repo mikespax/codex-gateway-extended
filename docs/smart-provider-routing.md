@@ -18,8 +18,10 @@ The Settings > Provider routing panel exposes exactly these primary modes:
   allowance is not exhausted. That failover is logged and never occurs in DeepSeek-only mode. Set
   `CODEX_PROVIDER_HYBRID_OPENAI_FALLBACK=false` to make such a failure fail closed instead.
 - **DeepSeek only** — OpenAI is never selected. Direct DeepSeek uses the official
-  `deepseek-v4-flash` text model and `deepseek-v4-flash-vision-exp` for image input. OpenRouter
-  may use its separate `deepseek/deepseek-v4.1-flash` catalog slug when that transport is enabled.
+  `deepseek-flash` direct model for both text and native image input. This is DeepSeek V4.1 Flash's
+  current canonical API identifier; the older `deepseek-v4-flash` and
+  `deepseek-v4-flash-vision-exp` names are compatibility aliases. OpenRouter may use its separate
+  `deepseek/deepseek-v4.1-flash` catalog slug when that transport is enabled.
 
 DeepSeek's published weekday peak windows are 01:00–04:00 UTC and 06:00–10:00 UTC. Weekends are
 off-peak. The policy is centralized in `server/utils/gateway/provider-router/pricing.ts`.

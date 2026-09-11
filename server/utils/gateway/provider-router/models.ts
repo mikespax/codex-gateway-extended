@@ -1,11 +1,12 @@
 import { getProviderRouterState, updateProviderRouterState } from "./state";
 import { recordFromUnknown } from "~~/shared/utils/records";
 
-// Direct DeepSeek uses the official API identifiers. The V4.1 Flash slug is an
-// OpenRouter catalog identifier; the direct Responses API currently exposes the
-// rolling text model as deepseek-v4-flash and the image-capable model separately.
-export const DIRECT_DEEPSEEK_TEXT_MODEL = "deepseek-v4-flash";
-export const DIRECT_DEEPSEEK_VISION_MODEL = "deepseek-v4-flash-vision-exp";
+// Direct DeepSeek's current canonical identifier is deepseek-flash. It is the
+// V4.1 Flash API model and accepts native text and image input; the older
+// deepseek-v4-flash and deepseek-v4-flash-vision-exp names are compatibility
+// aliases that DeepSeek temporarily routes to the same model.
+export const DIRECT_DEEPSEEK_TEXT_MODEL = "deepseek-flash";
+export const DIRECT_DEEPSEEK_VISION_MODEL = "deepseek-flash";
 const MODEL_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
 
 const OPENROUTER_CURRENT_FLASH_MODEL = "deepseek/deepseek-v4.1-flash";

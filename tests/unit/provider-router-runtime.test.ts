@@ -39,8 +39,8 @@ void test("all 288 mode, pricing, quota, credit, image and transport combination
                 containsImages,
                 useOpenRouterCreditsFirst,
                 requestedOpenAiModel: "gpt-5.6-luna",
-                directTextModel: "deepseek-v4-flash",
-                directVisionModel: "deepseek-v4-flash-vision-exp",
+                directTextModel: "deepseek-flash",
+                directVisionModel: "deepseek-flash",
                 openRouterTextModel: "deepseek/deepseek-v4.1-flash",
                 openRouterVisionModel: "deepseek/deepseek-v4.1-flash",
               });
@@ -98,7 +98,7 @@ void test("per-thread routing overrides persist and take precedence over the glo
       getThreadProviderRouting(4, "gif-thread"),
     );
     assert.equal(decision.transport, "deepseek");
-    assert.equal(decision.model, "deepseek-v4-flash");
+    assert.equal(decision.model, "deepseek-flash");
     setThreadProviderRouting(4, "gif-thread", null);
     assert.equal(getThreadProviderRouting(4, "gif-thread"), null);
   } finally {
@@ -195,7 +195,7 @@ void test("DeepSeek health is unknown until a turn completes and cannot remain f
         logicalProvider: "deepseek",
         effectiveProvider: "deepseek",
         transport: "deepseek",
-        model: "deepseek-v4-flash",
+        model: "deepseek-flash",
         containsImages: false,
         deepseekPeriod: "off_peak",
         reason: "deepseek_only_direct",
