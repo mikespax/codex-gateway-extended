@@ -650,8 +650,9 @@ export class ThreadOpenService {
     }
 
     // Non-browser refreshes, such as reconciliation after a failed turn command, already run under
-    // a controller operation and must not acquire another subscription lease. They retain the
-    // metadata + page pair; normal browser cold opens use the combined resume path above.
+    // a controller operation and must not acquire another subscription lease. Paginated app-server
+    // history is read through the bounded summary page rather than the deprecated full-hydration
+    // compatibility path.
     const client = await this.registry.getHostClient(host);
     const [read, initialTurnsPage] = await Promise.all([
       client.request(
@@ -667,7 +668,7 @@ export class ThreadOpenService {
           cursor: null,
           limit,
           sortDirection: "desc",
-          itemsView: "full",
+          itemsView: "summary",
         },
         120_000,
         parseTurnsPage,

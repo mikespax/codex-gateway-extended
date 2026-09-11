@@ -23,6 +23,8 @@ export class ThreadHistoryReader {
         cursor: input.cursor ?? null,
         limit: input.limit ?? DEFAULT_TURN_PAGE_LIMIT,
         sortDirection: input.sortDirection ?? "desc",
+        // Older-page requests are explicit user navigation. Preserve the existing full-content
+        // behavior there; cold opens use the bounded summary page in ThreadController instead.
         itemsView: "full",
       },
       120_000,

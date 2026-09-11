@@ -115,8 +115,8 @@ export class ControllerRegistry {
   }
 
   retainActivationController(host: HostRecord, threadId: string) {
-    // Activation may satisfy a cold open with thread/resume.initialTurnsPage. Reserve the browser
-    // lease before issuing that RPC, but let ThreadOpenService decide whether a remote read is
+    // Activation may satisfy a cold open with a bounded resume plus turns/list page. Reserve the
+    // browser lease before issuing those RPCs, but let ThreadOpenService decide whether a remote read is
     // needed at all. Cache hits therefore do not resume idle threads merely to render history.
     return this.retainSubscription(host, threadId, "browser", {
       deferUpstreamSubscription: true,

@@ -274,8 +274,8 @@ function subscribeThreadEvents(
 
   if (initiallyRunning) ensureUpstreamSubscription();
   else {
-    // A cold resume subscribes as part of returning initialTurnsPage. Idle threads do not need a
-    // retained upstream subscription, so release the activation lease after the snapshot and let
+    // A cold resume subscribes as part of returning the bounded initial turns page. Idle threads
+    // do not need a retained upstream subscription, so release the activation lease after the snapshot and let
     // the global thread/started broadcast reacquire one when work begins.
     pendingActivation?.lease.release();
     pendingActivation = undefined;

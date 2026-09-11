@@ -1,5 +1,9 @@
 import type { HostRecord, RpcEnvelope } from "~~/shared/types";
-import { isAppServerSubAgentThread, parseThreadResumeResult } from "~~/shared/runtime/app-server";
+import {
+  isAppServerSubAgentThread,
+  parseThreadResumeResult,
+  parseTurnsPage,
+} from "~~/shared/runtime/app-server";
 import {
   runtimeStatusFromAppThreadStatus,
   runtimeStatusFromSnapshotState,
@@ -121,17 +125,26 @@ export class ThreadController {
 
   async resumeWithInitialTurnsPage(limit: number) {
     await this.ensureConnected();
-    return this.enqueue(() =>
-      this.requestResume({
-        threadId: this.threadId,
-        excludeTurns: true,
-        initialTurnsPage: {
+    return this.enqueue(async () => {
+      // Paginated Codex threads explicitly deprecate full-history hydration through
+      // thread/resume(initialTurnsPage). Resume metadata first, then ask the indexed history
+      // API for a bounded summary page. The old compatibility path rehydrates every item in each
+      // returned turn and is the main source of cold-open stalls on large sessions.
+      const resumed = await this.requestResume({ threadId: this.threadId, excludeTurns: true });
+      const initialTurnsPage = await this.client.request(
+        "thread/turns/list",
+        {
+          threadId: this.threadId,
+          cursor: null,
           limit,
           sortDirection: "desc",
-          itemsView: "full",
+          itemsView: "summary",
         },
-      }),
-    );
+        120_000,
+        parseTurnsPage,
+      );
+      return { ...resumed, initialTurnsPage };
+    });
   }
 
   isSubscribed() {
