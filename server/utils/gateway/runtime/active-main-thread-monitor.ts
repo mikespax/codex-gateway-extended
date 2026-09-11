@@ -441,7 +441,13 @@ function pinnedThreadIdsForHost(hostId: number) {
   return [
     ...new Set(
       gatewayMemoryState.pinnedThreads
-        .filter((thread) => thread.hostId === hostId && thread.threadId.trim() !== "")
+        // Inactive pins are an on-demand navigation surface, not a live-monitoring contract.
+        // Probing them after every host reconnect needlessly resumes or reads old rollouts on the
+        // shared RPC channel and is especially expensive when the host no longer has them loaded.
+        .filter(
+          (thread) =>
+            thread.hostId === hostId && thread.inactive !== true && thread.threadId.trim() !== "",
+        )
         .map((thread) => thread.threadId.trim()),
     ),
   ];
